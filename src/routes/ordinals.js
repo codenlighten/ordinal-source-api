@@ -9,6 +9,7 @@ import { counter } from '../lib/metrics.js'
 import { applyDeploy } from '@smartledger/ordinals'
 import { assertEncoding, parseSelectors, projectOutput, selectBytes } from '../lib/select.js'
 import { traceOrdinal } from '../services/indexer.js'
+import { inspectChain, reinscriptionWarning } from '../services/reinscription.js'
 import { validateTransaction } from '../services/tokenValidate.js'
 import { verifyOrdinal } from '../services/verify.js'
 import { DEFAULT_ORDER, PROVIDERS } from '../services/providers.js'
@@ -49,6 +50,7 @@ function readQuery (req) {
     withOrigin: bool(req.query.origin),
     verify: bool(req.query.verify),
     validateTokens: bool(req.query.validateTokens ?? req.query.conservation),
+    reinscriptions: bool(req.query.reinscriptions ?? req.query.reinscribed),
     depth: (() => {
       const d = req.query.depth != null ? Number(req.query.depth) : 1
       if (!Number.isInteger(d) || d < 1 || d > config.tokenValidateMaxDepth) {
@@ -102,7 +104,13 @@ function sendRawValue (res, view, raw, selectors, q) {
 const needsTrace = (q) =>
   q.withOrigin ||
   q.verify ||
+  q.reinscriptions ||
   q.selectors.some((s) => s.type === 'view' && (s.path === 'ordinal' || s.path.startsWith('ordinal.')))
+
+/** Re-inscription needs the chain's other end, so it needs the trace first. */
+const needsReinscriptions = (q) =>
+  q.reinscriptions ||
+  q.selectors.some((s) => s.type === 'view' && s.path.startsWith('ordinal.reinscription'))
 
 /**
  * Resolves where an ordinal sits in its transfer chain. By default that is an
@@ -111,9 +119,9 @@ const needsTrace = (q) =>
  * means the origin still resolves when every indexer is down, since walking
  * backward needs no index at all.
  */
-async function chainPosition (outpoint, q) {
+async function chainPosition (outpoint, q, { known = {} } = {}) {
   const ordinal = await traceOrdinal(outpoint, { network: q.network })
-  if (!q.verify) return ordinal
+  if (!q.verify) return withReinscriptions(ordinal, q, known)
 
   const verification = await verifyOrdinal(outpoint, {
     network: q.network,
@@ -144,6 +152,34 @@ async function chainPosition (outpoint, q) {
     // rather than quietly picking a winner.
     ordinal.disagreement = disagreements
   }
+  return withReinscriptions(ordinal, q, known)
+}
+
+/**
+ * Looks for the same satoshi being inscribed again later in its chain. When a
+ * verified walk has run, every hop it visited is already summarised, so this
+ * only pays for the points that walk did not cover.
+ */
+async function withReinscriptions (ordinal, q, known = {}) {
+  if (!needsReinscriptions(q)) return ordinal
+
+  const forward = ordinal.verification?.hops?.forward ?? []
+  const seen = { ...known }
+  for (const hop of forward) {
+    if (hop.to && hop.inscription) seen[hop.to] = hop.inscription
+  }
+
+  ordinal.reinscription = await inspectChain(
+    {
+      genesis: ordinal.genesis?.outpoint ?? null,
+      current: ordinal.current?.outpoint ?? null,
+      hops: forward.map((hop) => hop.to).filter(Boolean)
+    },
+    { network: q.network, providers: q.providers, known: seen }
+  )
+
+  const warning = reinscriptionWarning(ordinal.reinscription)
+  if (warning) ordinal.reinscription.warning = warning
   return ordinal
 }
 

@@ -58,6 +58,7 @@ export function createApp () {
         origin: 'add genesis origin and current holder',
         verify: 'recompute that position from chain data and compare',
         validateTokens: 'check token conservation across the transaction',
+        reinscriptions: 'find later inscriptions on the same satoshi',
         depth: 'how far back to validate token inputs (1-4)',
         resolveToken: 'fill in a transfer\'s symbol and decimals from its deploy',
         tokens: 'only outputs carrying a bsv-20 / bsv-21 token',

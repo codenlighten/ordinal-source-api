@@ -83,6 +83,12 @@ const META_SELECTORS = {
   max: 'inscription.token.max',
   supply: 'inscription.token.max',
 
+  // Re-inscription: the same satoshi inscribed again later in its chain.
+  reinscription: 'ordinal.reinscription',
+  reinscribed: 'ordinal.reinscription.reinscribed',
+  reinscriptions: 'ordinal.reinscription.inscriptions',
+  contentdiffers: 'ordinal.reinscription.contentDiffers',
+
   // Chain-position fields, filled in by an indexer (?origin=1 or on selection).
   ordinal: 'ordinal',
   role: 'ordinal.role',

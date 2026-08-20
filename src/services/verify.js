@@ -7,6 +7,7 @@ import {
   outputOffset
 } from '@smartledger/ordinals'
 import { formatOutpoint } from '../lib/outpoint.js'
+import { summarize } from './reinscription.js'
 import { lookupSpend } from './indexer.js'
 import { fetchTransaction } from './txProvider.js'
 
@@ -190,13 +191,18 @@ export async function walkToTip (start, { network, providers, budget }) {
     const values = await inputValuesBefore(spendingTx, index, budget, opts)
     const step = followForward(spendingTx, { txid, vout, outpoint }, offsetInOutput, values)
 
+    const landed = step.burned ? null : formatOutpoint(spendingTx.hash, step.vout)
+
     hops.push({
       outpoint,
       spentIn: spend.spentIn,
       inputIndex: step.inputIndex,
       satoshiOffset: step.satoshiOffset,
-      to: step.burned ? null : formatOutpoint(spendingTx.hash, step.vout),
-      landedIn: step.burned ? 'fee' : `output ${step.vout} of ${step.satoshis} satoshis`
+      to: landed,
+      landedIn: step.burned ? 'fee' : `output ${step.vout} of ${step.satoshis} satoshis`,
+      // The transaction is already in hand, so noticing that this hop carries
+      // an inscription of its own costs nothing.
+      inscription: landed ? summarize(spendingTx.outputs[step.vout].script, landed) : null
     })
 
     if (step.burned) {

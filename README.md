@@ -11,7 +11,7 @@ the txid is verified locally, so no indexer is trusted for the parse.
 ```bash
 npm install
 npm start          # http://localhost:3000
-npm test           # 153 tests, no network required
+npm test           # 161 tests, no network required
 ```
 
 The protocol itself lives in [`packages/core`](packages/core) and is published
@@ -220,6 +220,40 @@ directions; WhatsOnChain resolves origin only, so it serves as an origin
 fallback. If no indexer answers, the on-chain parse still returns and the
 `ordinal` block is marked `unavailable` with what was tried.
 
+## Re-inscription
+
+The spec allows the same satoshi to be inscribed again — "you can also append to
+the inscriptions on an ordinal by inscribing the same sat again" — and says
+nothing about which inscription then represents the ordinal. That silence is a
+practical problem: a viewer resolving the **origin** and a viewer resolving the
+**current outpoint** can show completely different content, and neither is wrong.
+
+`?reinscriptions=1` reports it instead of leaving it to be noticed by eye:
+
+```json
+{ "reinscribed": true, "contentDiffers": true, "count": 2,
+  "inscriptions": [
+    { "role": "genesis", "contentType": "image/jpeg", "contentLength": 281955, "contentHash": "bae3da4b…" },
+    { "role": "current", "contentType": "image/jpeg", "contentLength": 248387, "contentHash": "60caa3a8…" }
+  ],
+  "coverage": "the ends of the chain only; add verify=1 to walk every transfer",
+  "warning": "this ordinal was inscribed again after its origin, and the current content differs…" }
+```
+
+No winner is picked — both are listed with their own `contentUrl`, and the
+caller decides which one their product means.
+
+`contentDiffers` is the flag that matters: re-inscribing *identical* bytes is a
+re-inscription but not an ambiguity, and is not warned about.
+
+**Coverage is stated rather than assumed.** On its own this checks the two ends
+of the chain, which is where re-inscription almost always shows up but is not a
+proof that nothing happened in between. With `?verify=1` the walk visits every
+transfer anyway, so every hop is inspected — and at no extra cost, since those
+transactions are already fetched.
+
+Selectors: `reinscribed`, `contentDiffers`, `reinscriptions`, `reinscription`.
+
 ## Verifying it yourself
 
 `?verify=1` recomputes the ordinal's position from transaction bytes instead of
@@ -282,6 +316,7 @@ nine-transfer chain verifies end to end in about 10 transaction fetches.
 | `origin` | add genesis origin, current holder, and spend data |
 | `verify` | recompute that position from chain data and compare |
 | `validateTokens` | check token conservation across the transaction |
+| `reinscriptions` | find later inscriptions on the same satoshi |
 | `depth` | how far back to validate token inputs (1-4) |
 | `resolveToken` | fill in a transfer's symbol and decimals from its deploy |
 | `tokens` | on a txid, only outputs carrying a bsv-20 / bsv-21 token |
