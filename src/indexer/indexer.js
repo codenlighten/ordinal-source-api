@@ -48,11 +48,29 @@ export class Indexer {
     // under us; walk back until it lines up again.
     if (cursor && block.previousHash && this.store.blockHashAt(cursor.height) !== block.previousHash) {
       const dropped = this.store.rollbackBlock()
-      if (dropped) {
-        counter('ordinal_api_index_reorgs_total')
-        this.log.warn('reorg, rolled back a block', { height: dropped.height, hash: dropped.hash })
-        return { reorg: true, rolledBack: dropped.height }
+
+      // Nothing left to undo means the chain moved further back than the undo
+      // window reaches. Continuing would write new history on top of state that
+      // no longer matches the chain, so stop and say what it would take to fix.
+      if (!dropped) {
+        const safe = this.store.safeHeight()
+        const err = new Error(
+          `reorg at height ${height} goes deeper than the undo window; ` +
+          `reindex from ${safe ?? this.startHeight}`
+        )
+        err.code = 'reorg_beyond_undo_window'
+        err.resyncFrom = safe ?? this.startHeight
+        counter('ordinal_api_index_reorgs_total', { outcome: 'beyond_window' })
+        this.log.error('reorg beyond the undo window', {
+          height,
+          resyncFrom: err.resyncFrom
+        })
+        throw err
       }
+
+      counter('ordinal_api_index_reorgs_total', { outcome: 'rolled_back' })
+      this.log.warn('reorg, rolled back a block', { height: dropped.height, hash: dropped.hash })
+      return { reorg: true, rolledBack: dropped.height }
     }
 
     // Previous values, captured as each write lands, so rollback restores what
@@ -79,7 +97,12 @@ export class Indexer {
       }
     }
 
-    this.store.commitBlock({ height: block.height, hash: block.hash, before })
+    this.store.commitBlock({
+      height: block.height,
+      hash: block.hash,
+      previousHash: block.previousHash ?? null,
+      before
+    })
 
     counter('ordinal_api_index_blocks_total')
     counter('ordinal_api_index_transactions_total', undefined, scanned)

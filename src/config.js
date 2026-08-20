@@ -57,9 +57,16 @@ export const config = {
   verifyMaxHops: int(process.env.VERIFY_MAX_HOPS, 32),
   verifyMaxFetches: int(process.env.VERIFY_MAX_FETCHES, 120),
 
-  // An index snapshot written by `npm run index --out`. When present, the API
-  // answers spend lookups from it instead of asking a third-party indexer.
+  // An index built by `npm run index`: a SQLite database (durable, and what a
+  // real sync should use) or a JSON snapshot (portable, fine for one token).
+  // With either present, the API answers spend lookups from it rather than
+  // asking a third-party indexer.
+  indexDb: process.env.INDEX_DB || null,
   indexFile: process.env.INDEX_FILE || null,
+
+  // How many blocks of history stay reversible. A reorg deeper than this is a
+  // reindex rather than a rollback, and the indexer stops instead of guessing.
+  indexUndoDepth: int(process.env.INDEX_UNDO_DEPTH, 200),
 
   // 1Sat inscriptions begin around here; earlier blocks hold no tokens.
   indexStartHeight: int(process.env.INDEX_START_HEIGHT, 780000),

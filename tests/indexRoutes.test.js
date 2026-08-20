@@ -66,14 +66,14 @@ before(async () => {
   file = join(dir, 'index.json')
   await writeFile(file, JSON.stringify(store.toJSON()))
 
-  await loadIndex(file)
+  await loadIndex({ file })
   app = await startApp()
   app.fixture = { deploy, send, id }
 })
 
 after(async () => {
   await app.close()
-  await loadIndex(null)
+  await loadIndex({ file: null, db: null })
 })
 
 test('an index snapshot survives being written and read back', async () => {
@@ -126,11 +126,11 @@ test('a ticker can be looked up by name as well as by key', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'index-'))
   const path = join(dir, 'i.json')
   await writeFile(path, JSON.stringify(store.toJSON()))
-  await loadIndex(path)
+  await loadIndex({ file: path })
 
   const body = await (await app.get('/v1/index/token/tick')).json()
   assert.equal(body.tick, 'TICK')
-  await loadIndex(file) // restore the shared fixture
+  await loadIndex({ file }) // restore the shared fixture
 })
 
 test('an address reports its token balances', async () => {
@@ -157,12 +157,12 @@ test('an outpoint the index never saw is a 404, not a guess', async () => {
 })
 
 test('without an index the endpoints say so rather than pretending', async () => {
-  await loadIndex(null)
+  await loadIndex({ file: null, db: null })
   const status = await (await app.get('/v1/index')).json()
   assert.equal(status.loaded, false)
 
   const res = await app.get('/v1/index/tokens')
   assert.equal(res.status, 404)
   assert.match((await res.json()).error.details.hint, /npm run index/)
-  await loadIndex(file)
+  await loadIndex({ file })
 })

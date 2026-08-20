@@ -11,6 +11,7 @@ import { MemoryStore } from './store.js'
  *   npm run index -- --from 793000 --to 793010 --out index.json
  *   npm run index -- --from 793000 --follow
  *   npm run index -- --token <outpoint> --out index.json
+ *   npm run index -- --from 793000 --follow --db index.db
  *
  * The --token form replays one token's own history instead of scanning blocks,
  * which is the difference between dozens of fetches and millions.
@@ -31,7 +32,18 @@ const follow = Boolean(arg('follow'))
 
 const out = arg('out')
 const token = arg('token')
-const store = new MemoryStore()
+const db = arg('db')
+
+// SQLite when asked for: durable, and its undo log survives a restart, so the
+// reorg window is not reset to nothing every time the process starts.
+let store
+if (db) {
+  const { SqliteStore } = await import('./sqliteStore.js')
+  store = await SqliteStore.open(String(db), { undoDepth: config.indexUndoDepth })
+  logger.info('using sqlite index', { db: String(db), ...store.stats() })
+} else {
+  store = new MemoryStore({ undoDepth: config.indexUndoDepth })
+}
 let stats
 
 if (token) {
@@ -52,11 +64,13 @@ if (token) {
 }
 
 if (out) {
+  if (!store.toJSON) throw new Error('--out writes a snapshot; use it without --db')
   await writeFile(String(out), JSON.stringify(store.toJSON()))
   logger.info('index written', { file: String(out) })
 }
 
 logger.info('index summary', stats)
+
 for (const token of store.tokens().slice(0, 20)) {
   logger.info('token', {
     key: token.tokenKey,
@@ -67,3 +81,5 @@ for (const token of store.tokens().slice(0, 20)) {
     height: token.height
   })
 }
+
+if (store.close) store.close()

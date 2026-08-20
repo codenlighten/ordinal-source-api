@@ -24,6 +24,9 @@ jobs:
       - run: npm test
       - name: The core package stands alone
         run: cd packages/core && node --test
+      # node:sqlite needs 22.5+; on Node 20 those tests skip rather than fail.
+      - name: Report skipped suites
+        run: npm test 2>&1 | grep -E '^# (skipped|pass|fail)'
 
   smoke:
     runs-on: ubuntu-latest

@@ -18,20 +18,30 @@ import { BALANCE, MemoryStore, SPEND, TOKEN, UTXO } from '../indexer/store.js'
 
 let store = null
 
-/** Loads an index snapshot written by the indexer. Absent is not an error. */
-export async function loadIndex (file = config.indexFile) {
-  if (!file) {
+/**
+ * Loads an index built by the indexer: a SQLite database if one is configured,
+ * otherwise a JSON snapshot. Absent is not an error - the API simply falls back
+ * to asking a third-party indexer, as it did before there was a local one.
+ */
+export async function loadIndex ({ db = config.indexDb, file = config.indexFile } = {}) {
+  if (!db && !file) {
     // Loading nothing means there is no index, not "keep the last one".
     store = null
     return null
   }
+
   try {
-    const data = JSON.parse(await readFile(file, 'utf8'))
-    store = MemoryStore.fromJSON(data)
-    logger.info('index loaded', { file, ...store.stats() })
+    if (db) {
+      const { SqliteStore } = await import('../indexer/sqliteStore.js')
+      store = await SqliteStore.open(db, { undoDepth: config.indexUndoDepth })
+      logger.info('index loaded', { db, ...store.stats() })
+    } else {
+      store = MemoryStore.fromJSON(JSON.parse(await readFile(file, 'utf8')))
+      logger.info('index loaded', { file, ...store.stats() })
+    }
     return store
   } catch (err) {
-    logger.warn('no index loaded', { file, error: err.message })
+    logger.warn('no index loaded', { db, file, error: err.message })
     store = null
     return null
   }
@@ -65,7 +75,12 @@ router.get('/', (_req, res) => {
   if (!store) {
     return res.json({ loaded: false, hint: 'set INDEX_FILE to an index built by `npm run index`' })
   }
-  res.json({ loaded: true, file: config.indexFile, ...store.stats() })
+  res.json({
+    loaded: true,
+    source: config.indexDb ? 'sqlite' : 'snapshot',
+    path: config.indexDb ?? config.indexFile,
+    ...store.stats()
+  })
 })
 
 /** GET /v1/index/tokens - every token this index has seen. */

@@ -68,24 +68,42 @@ export class MemoryStore {
     }
   }
 
-  commitBlock ({ height, hash, before }) {
-    this.undo.push({ height, hash, before })
+  commitBlock ({ height, hash, previousHash = null, before }) {
+    this.undo.push({ height, hash, previousHash, before })
     while (this.undo.length > this.undoDepth) this.undo.shift()
     this.cursor = { height, hash }
   }
 
-  /** Rolls back the most recent block, for a reorg. */
+  /**
+   * Rolls back the most recent block. The cursor moves to that block's parent -
+   * named, not merely implied - so the next block is still checked for fit
+   * after the undo log empties, rather than the check silently going away.
+   */
   rollbackBlock () {
     const last = this.undo.pop()
     if (!last) return null
     this.revert(last.before)
+
     const previous = this.undo[this.undo.length - 1]
-    this.cursor = previous ? { height: previous.height, hash: previous.hash } : null
+    this.cursor = previous
+      ? { height: previous.height, hash: previous.hash }
+      : { height: last.height - 1, hash: last.previousHash ?? null }
     return last
   }
 
+  /**
+   * The oldest height still reversible. A reorg deeper than this cannot be
+   * undone from the undo log, which is a resync, not a rollback.
+   */
+  safeHeight () {
+    return this.undo.length ? this.undo[0].height : null
+  }
+
   blockHashAt (height) {
-    return this.undo.find((entry) => entry.height === height)?.hash ?? null
+    const entry = this.undo.find((e) => e.height === height)
+    if (entry) return entry.hash
+    // The cursor knows its own hash even once its undo entry has been trimmed.
+    return this.cursor?.height === height ? this.cursor.hash : null
   }
 
   getCursor () {

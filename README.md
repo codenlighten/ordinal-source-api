@@ -11,7 +11,7 @@ the txid is verified locally, so no indexer is trusted for the parse.
 ```bash
 npm install
 npm start          # http://localhost:3000
-npm test           # 129 tests, no network required
+npm test           # 137 tests, no network required
 ```
 
 The protocol itself lives in [`packages/core`](packages/core) and is published
@@ -395,14 +395,14 @@ reading the chain **in order**.
 
 ```bash
 # one token's own history, without scanning the chain
-npm run index -- --token <outpoint> --out index.json
+npm run index -- --token <outpoint> --db index.db
 
 # or block by block
-npm run index -- --from 793000 --to 793010 --out index.json
-npm run index -- --from 793000 --follow
+npm run index -- --from 793000 --to 793010 --db index.db
+npm run index -- --from 793000 --follow --db index.db
 
 # then serve it
-INDEX_FILE=index.json npm start
+INDEX_DB=index.db npm start
 ```
 
 ```bash
@@ -451,11 +451,32 @@ when throttled — it is a client before it is anything else.
 
 ### Storage
 
-`MemoryStore` is the reference implementation, with `toJSON`/`fromJSON` for
-snapshots. The interface it satisfies is four record kinds — `utxo`, `token`,
-`spend`, `balance` — and every write goes through `apply`, which captures the
-previous value so a block can be undone. Point that at SQLite or Postgres and
-nothing above it changes.
+Four record kinds — `utxo`, `token`, `spend`, `balance` — behind a small
+interface. Every write goes through `apply`, which captures the previous value
+so a block can be undone.
+
+| Store | Use |
+| --- | --- |
+| `SqliteStore` (`--db`) | durable, and the undo log lives in the database, so the reorg window survives a restart. Uses Node's built-in `node:sqlite` — no native dependency, no build step, but it needs Node 22.5+ and prints an experimental-feature warning |
+| `MemoryStore` (`--out`) | the reference implementation, snapshots to JSON. Portable and fine for one token; not for a chain |
+
+Both satisfy the same contract and produce identical state from identical
+history — there is a test that asserts exactly that. Postgres drops in the same
+way.
+
+### Reorgs
+
+Each block is committed with its previous values and its parent's hash. A block
+that does not name the current tip as its parent triggers a rollback, and ingest
+retries from the restored height.
+
+A reorg deeper than the undo window (`INDEX_UNDO_DEPTH`, 200 blocks) **cannot**
+be undone from what is stored, so the indexer stops with
+`reorg_beyond_undo_window` and names the height to reindex from. It does not
+carry on — writing new history onto state that no longer matches the chain would
+produce an index that looks fine and is quietly wrong. The cursor keeps the
+rolled-back block's named parent for the same reason: without it, emptying the
+undo log would silently disable the check rather than fail it.
 
 ## Running it
 
@@ -535,7 +556,8 @@ Copy `.env.example` to `.env`. Everything has a working default:
 `RATE_LIMIT`, `RATE_LIMIT_RPM`, `RATE_LIMIT_BURST`, `TRUST_PROXY`,
 `VERIFY_MAX_HOPS`, `VERIFY_MAX_FETCHES`, `TOKEN_VALIDATE_MAX_FETCHES`,
 `TOKEN_VALIDATE_MAX_DEPTH`, `LOG_LEVEL`, `LOG_FORMAT`, `SHUTDOWN_GRACE_MS`,
-`INDEX_FILE`, `INDEX_START_HEIGHT`, `INDEX_CONCURRENCY`.
+`INDEX_DB`, `INDEX_FILE`, `INDEX_START_HEIGHT`, `INDEX_CONCURRENCY`,
+`INDEX_UNDO_DEPTH`.
 
 ## Errors
 
