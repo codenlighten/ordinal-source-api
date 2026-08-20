@@ -33,6 +33,7 @@ const META_SELECTORS = {
   hasinscription: 'hasInscription',
   valid: 'inscription.valid',
   terminated: 'inscription.terminated',
+  arrangement: 'inscription.arrangement',
   contentlength: 'inscription.contentLength',
   contentsize: 'inscription.contentLength',
   size: 'inscription.contentLength',

@@ -56,4 +56,4 @@ export {
   parseVout
 } from './outpoint.js'
 
-export { inscriptionAt, splitLock, tokenAt, tokenOutputs } from './inscription.js'
+export { arrangementOf, inscriptionAt, splitLock, tokenAt, tokenOutputs } from './inscription.js'

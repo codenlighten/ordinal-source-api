@@ -6,7 +6,7 @@ import {
   fieldDefByKey,
   sha256
 } from './fields.js'
-import { detectToken, splitLock } from '@smartledger/ordinals'
+import { arrangementOf, detectToken, splitLock } from '@smartledger/ordinals'
 import { formatOutpoint } from './outpoint.js'
 
 const labelFor = (key, def) => {
@@ -30,7 +30,7 @@ function describeLock (lockScript, network) {
   return { type: lockScript.classify(), hex, asm: lockScript.toASM(), address }
 }
 
-function renderEnvelope (env, opts, outpoint) {
+function renderEnvelope (env, opts, outpoint, script) {
   const contentTypeBuf = env.fields.get('01')
   const contentType = contentTypeBuf ? contentTypeBuf.toString('utf8') : null
   const bodyBuf = opts.concatBody ? env.bodyConcat : env.body
@@ -66,6 +66,7 @@ function renderEnvelope (env, opts, outpoint) {
     envelopeIndex: env.index,
     valid: env.valid,
     terminated: env.terminated,
+    arrangement: arrangementOf(script, env),
     isToken: Boolean(token),
     token,
     ...named,
@@ -115,7 +116,7 @@ export function buildOutputView ({
   const warnings = []
 
   const first = parsed.envelopes[0] || null
-  const rendered = first ? renderEnvelope(first, opts, outpoint) : null
+  const rendered = first ? renderEnvelope(first, opts, outpoint, parsed.script) : null
 
   if (parsed.envelopes.length > 1) {
     warnings.push(
@@ -153,7 +154,7 @@ export function buildOutputView ({
   if (opts.includeAll && parsed.envelopes.length > 1) {
     view.otherInscriptions = parsed.envelopes
       .slice(1)
-      .map((env) => renderEnvelope(env, opts, outpoint).inscription)
+      .map((env) => renderEnvelope(env, opts, outpoint, parsed.script).inscription)
   }
 
   const raw = {

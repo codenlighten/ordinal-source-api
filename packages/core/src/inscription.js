@@ -65,6 +65,37 @@ export function splitLock (script) {
 }
 
 /**
+ * How the envelope and the locking script are arranged in an output.
+ *
+ * The 1Sat spec allows either order - "a locking script is then
+ * prepended/appended to the inscription script, optionally separated by
+ * OP_CODE_SEPERATOR" - so all three are valid. It is worth reporting anyway,
+ * because tooling in the wild does not always agree: an output that no
+ * marketplace displays is usually blamed on ordering, and knowing the actual
+ * arrangement is the first step in telling whether that blame is deserved.
+ */
+export function arrangementOf (script, envelope) {
+  if (!envelope) return null
+  const chunks = script.chunks
+  const end = envelope.terminated ? envelope.end : chunks.length - 1
+
+  const before = chunks.slice(0, envelope.start)
+  // Trailing OP_RETURN data is not a locking script, so it must not make an
+  // output look as though the envelope sits between two halves of a lock.
+  const trailing = chunks.slice(end + 1)
+  const cut = trailing.findIndex((c) => c.opcodenum === Opcode.OP_RETURN && !c.buf)
+  const after = cut === -1 ? trailing : trailing.slice(0, cut)
+  const separated = [...before, ...after].some(
+    (c) => c.opcodenum === Opcode.OP_CODESEPARATOR && !c.buf
+  )
+
+  if (!before.length && !after.length) return 'envelope-only'
+  if (!before.length) return separated ? 'envelope-first-separated' : 'envelope-first'
+  if (!after.length) return separated ? 'lock-first-separated' : 'lock-first'
+  return 'envelope-between'
+}
+
+/**
  * The first valid inscription in an output script, reduced to the parts a
  * consumer usually wants. Returns null when the script carries none.
  */
@@ -78,6 +109,7 @@ export function inscriptionAt (script, outpoint = null) {
 
   return {
     contentType,
+    arrangement: arrangementOf(parsed.script, envelope),
     content: envelope.body,
     contentLength: envelope.body ? envelope.body.length : 0,
     fields: envelope.fields,

@@ -144,3 +144,22 @@ test('tokenAt reads a token without doing the lock work', () => {
   // Same answer as the fuller path, just without the discarded work.
   assert.deepEqual(token, inscriptionAt(script, `${'ab'.repeat(32)}_0`).token)
 })
+
+test('the arrangement of envelope and lock is reported', () => {
+  const insc = inscribed('hi')
+  assert.equal(inscriptionAt(concatScripts(insc, p2pkh())).arrangement, 'envelope-first')
+  assert.equal(inscriptionAt(concatScripts(p2pkh(), insc)).arrangement, 'lock-first')
+  assert.equal(inscriptionAt(insc).arrangement, 'envelope-only')
+})
+
+test('a trailing OP_RETURN does not disguise the arrangement', () => {
+  // Lock, envelope, then MAP data: still lock-first, not "between two locks".
+  const script = concatScripts(p2pkh(), inscribed('hi'), MAP)
+  assert.equal(inscriptionAt(script).arrangement, 'lock-first')
+})
+
+test('a code separator between lock and envelope is named', () => {
+  const sep = new Script().add(Opcode.OP_CODESEPARATOR)
+  const script = concatScripts(inscribed('hi'), sep, p2pkh())
+  assert.equal(inscriptionAt(script).arrangement, 'envelope-first-separated')
+})
