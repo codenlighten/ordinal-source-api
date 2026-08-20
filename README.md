@@ -454,3 +454,7 @@ Copy `.env.example` to `.env`. Everything has a working default:
 output not found (with what each provider said) · `413` over a configured
 `MAX_TX_BYTES` · `429` rate limited (with `retry-after`) · `502` all providers
 failed · `504` upstream timeout.
+
+## License
+
+MIT - see [LICENSE](LICENSE).
