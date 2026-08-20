@@ -72,7 +72,7 @@ export const config = {
   indexStartHeight: int(process.env.INDEX_START_HEIGHT, 780000),
 
   // Token conservation walks the transactions behind a transfer's inputs.
-  tokenValidateMaxFetches: int(process.env.TOKEN_VALIDATE_MAX_FETCHES, 60),
+  tokenValidateMaxFetches: int(process.env.TOKEN_VALIDATE_MAX_FETCHES, 250),
   tokenValidateMaxDepth: int(process.env.TOKEN_VALIDATE_MAX_DEPTH, 4),
 
   // How long to let in-flight requests drain on SIGTERM before forcing exit.

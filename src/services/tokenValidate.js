@@ -94,7 +94,7 @@ const sum = (values) => values.reduce((total, value) => total + BigInt(value), 0
  * rather than value, so they are counted separately; a burn output still
  * consumes balance, which is why it is summed with the transfers.
  */
-function conservationFor (key, inputs, outputs) {
+function conservationFor (key, inputs, outputs, unresolved = 0) {
   const spending = inputs.filter((i) => i.token && tokenKey(i.token) === key)
   const creating = outputs.filter((o) => tokenKey(o.token) === key)
 
@@ -113,6 +113,7 @@ function conservationFor (key, inputs, outputs) {
 
   const errors = []
   const notes = []
+  let undetermined = false
 
   // A token output is an ordinal, so it must be a single satoshi.
   for (const output of creating) {
@@ -125,15 +126,27 @@ function conservationFor (key, inputs, outputs) {
   const conserves = moved.length > 0
 
   if (conserves && outputTotal > inputTotal) {
-    errors.push(
-      `outputs move ${outputTotal} but inputs only carry ${inputTotal}; ` +
-      'the excess is not backed by any input'
-    )
+    // An input that was not fetched can only ADD balance, never remove it, so a
+    // shortfall is only a real shortfall once every input has been looked at.
+    // Reporting one otherwise would state "not conserved" as fact when the
+    // truth is "not all of it was read".
+    if (unresolved > 0) {
+      undetermined = true
+      notes.push(
+        `${unresolved} input(s) could not be read, and outputs move ${outputTotal} ` +
+        `against the ${inputTotal} seen so far, so conservation is undetermined`
+      )
+    } else {
+      errors.push(
+        `outputs move ${outputTotal} but inputs only carry ${inputTotal}; ` +
+        'the excess is not backed by any input'
+      )
+    }
   }
   if (minted.length && !authorities.length && !deploys.length) {
     errors.push('mint outputs require an auth input for this token')
   }
-  if (conserves && !valued.length && !deploys.length) {
+  if (conserves && !valued.length && !deploys.length && unresolved === 0) {
     errors.push('outputs move tokens but no input carries any')
   }
 
@@ -158,7 +171,9 @@ function conservationFor (key, inputs, outputs) {
     createdTotal: createdTotal > 0n ? createdTotal.toString() : undefined,
     burnedSurplus: surplus > 0n ? surplus.toString() : undefined,
     authorityPresent: authorities.length > 0,
-    conserved: errors.length === 0,
+    // true, false, or null for "could not be determined" - never a guess.
+    conserved: undetermined ? null : errors.length === 0,
+    undetermined: undetermined || undefined,
     errors,
     notes
   }
@@ -188,7 +203,8 @@ export async function validateTransaction (
 
   const inputs = await tokenInputs(tx, budget, opts)
   const keys = [...new Set(outputs.map((o) => tokenKey(o.token)).filter(Boolean))]
-  const tokens = keys.map((key) => conservationFor(key, inputs, outputs))
+  const unresolved = inputs.filter((i) => i.unresolved).length
+  const tokens = keys.map((key) => conservationFor(key, inputs, outputs, unresolved))
 
   // Every operation that stands on its own, with nothing to trace back to.
   const selfContained = outputs.every((o) => isDeploy(o.token))
@@ -196,7 +212,11 @@ export async function validateTransaction (
     txid,
     depth,
     tokens,
-    conserved: tokens.every((t) => t.conserved),
+    conserved: tokens.some((t) => t.conserved === false)
+      ? false
+      : tokens.some((t) => t.conserved === null)
+        ? null
+        : true,
     checked: ['document', 'conservation', 'satoshi-value', 'auth-input'],
     notChecked: NOT_DECIDABLE,
     unresolvedInputs: inputs.filter((i) => i.unresolved).map((i) => ({

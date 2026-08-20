@@ -230,5 +230,47 @@ test('an input that cannot be fetched is reported, not silently ignored', async 
 
   const result = await validateTransaction(spend.hash, { network: 'main' })
   assert.equal(result.unresolvedInputs.length, 1)
+  // Undetermined rather than false: the input was never read, so nothing about
+  // what it carried has been established.
+  assert.equal(result.conserved, null)
+})
+
+test('an input that could not be read makes conservation undetermined, not false', async () => {
+  const source = build([[FUNDING, 0]], [transfer('1000')])
+  const other = build([[FUNDING, 1]], [transfer('1000')])
+  // Two token inputs, but only one of the source transactions is available.
+  const spend = build([[source.hash, 0], [other.hash, 0]], [transfer('1500'), 500])
+  mockChain([source, spend]) // `other` is missing
+
+  const result = await validateTransaction(spend.hash, { network: 'main' })
+
+  // An unread input can only ADD balance, so a shortfall is not established.
+  assert.equal(result.conserved, null)
+  assert.equal(result.tokens[0].undetermined, true)
+  assert.deepEqual(result.tokens[0].errors, [])
+  assert.match(result.tokens[0].notes.join(' '), /could not be read/)
+  assert.equal(result.unresolvedInputs.length, 1)
+})
+
+test('a shortfall is only reported once every input has been read', async () => {
+  const source = build([[FUNDING, 0]], [transfer('1000')])
+  const spend = build([[source.hash, 0]], [transfer('5000')])
+  mockChain([source, spend]) // every input resolves
+
+  const result = await validateTransaction(spend.hash, { network: 'main' })
   assert.equal(result.conserved, false)
+  assert.equal(result.tokens[0].undetermined, undefined)
+  assert.match(result.tokens[0].errors.join(' '), /not backed by any input/)
+})
+
+test('unread inputs do not cloud a transaction that already balances', async () => {
+  const source = build([[FUNDING, 0]], [transfer('1000')])
+  const missing = build([[FUNDING, 1]], [transfer('1000')])
+  // Outputs are covered by the inputs we did read, so more input cannot change it.
+  const spend = build([[source.hash, 0], [missing.hash, 0]], [transfer('900'), 500])
+  mockChain([source, spend])
+
+  const result = await validateTransaction(spend.hash, { network: 'main' })
+  assert.equal(result.conserved, true)
+  assert.equal(result.unresolvedInputs.length, 1)
 })

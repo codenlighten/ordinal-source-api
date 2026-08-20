@@ -11,7 +11,7 @@ the txid is verified locally, so no indexer is trusted for the parse.
 ```bash
 npm install
 npm start          # http://localhost:3000
-npm test           # 137 tests, no network required
+npm test           # 153 tests, no network required
 ```
 
 The protocol itself lives in [`packages/core`](packages/core) and is published
@@ -154,10 +154,24 @@ What is decided, and what is not:
 | **Decided by walking** | whether the token inputs were themselves valid — `?depth=2..4` recurses toward the deploy; when every path reaches one, `proven: true` and the assumption disappears |
 | **Not decidable** | "first is first" ticker priority and BSV-20 supply limits, which need every deploy and mint that ever happened. Listed in `notChecked`, never reported as valid |
 
+`conserved` is `true`, `false`, or **`null` for undetermined** — never a guess.
+An input that could not be read only ever *adds* balance, so a shortfall is
+reported only once every input has actually been looked at; otherwise the answer
+is `null` with the count of unread inputs. A 123-input consolidation that
+outruns the fetch budget comes back undetermined, not invalid.
+
 At `depth=1` the answer is honest about resting on something: `conserved: true`
 with `assuming: "the token inputs are themselves valid"`. That single hop is
 still what catches the case that actually matters — outputs claiming more than
 the inputs carry.
+
+### Checked against another indexer
+
+The rules were cross-checked against GorillaPool on live data rather than only
+against their spec: 32 outputs across 15 tokens agreed on operation, amount,
+token id and symbol, and 30 of 30 transactions agreed on conservation. The one
+disagreement in the first run was a bug here, and is described in
+`TOKEN_VALIDATE_MAX_FETCHES` above — the sort of thing only real data finds.
 
 Deploys create supply rather than moving it, so a `deploy+mint` needs nothing
 behind it and comes back `proven: true` on its own. Transfers and burns both
