@@ -52,6 +52,11 @@ export const config = {
     burst: int(process.env.RATE_LIMIT_BURST, 30)
   },
 
+  // Independent verification walks real transactions, so it is bounded: hops
+  // along the transfer chain, and transactions fetched in total.
+  verifyMaxHops: int(process.env.VERIFY_MAX_HOPS, 32),
+  verifyMaxFetches: int(process.env.VERIFY_MAX_FETCHES, 120),
+
   // Set when running behind a proxy so the rate limiter sees real client IPs.
   trustProxy: process.env.TRUST_PROXY || false
 }

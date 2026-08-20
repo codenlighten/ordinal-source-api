@@ -29,6 +29,7 @@ export function createApp () {
         'GET /v1/outpoint/:txid_:vout': 'one output by inscription id',
         'GET /v1/outpoint/:outpoint/content': 'inscription body with its content-type',
         'GET /v1/ordinal/:outpoint': 'genesis origin and current holder, from either end',
+        'GET /v1/ordinal/:outpoint?verify=1': 'recompute both from transaction bytes',
         'POST /v1/parse': 'parse a rawtx or script without touching the network',
         'GET /v1/fields': 'selectable fields',
         'GET /v1/providers': 'configured sources'
@@ -40,6 +41,7 @@ export function createApp () {
         network: 'main | test',
         provider: 'gorillapool | whatsonchain | bitails | junglebus (comma separated)',
         origin: 'add genesis origin and current holder',
+        verify: 'recompute that position from chain data and compare',
         resolveToken: 'fill in a transfer\'s symbol and decimals from its deploy',
         tokens: 'only outputs carrying a bsv-20 / bsv-21 token',
         fast: 'fetch only the output script instead of the whole transaction',

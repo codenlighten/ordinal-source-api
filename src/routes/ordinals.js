@@ -8,6 +8,7 @@ import { formatOutpoint, parseOutpoint, parseVout } from '../lib/outpoint.js'
 import { applyDeploy } from '../lib/token.js'
 import { assertEncoding, parseSelectors, projectOutput, selectBytes } from '../lib/select.js'
 import { traceOrdinal } from '../services/indexer.js'
+import { verifyOrdinal } from '../services/verify.js'
 import { DEFAULT_ORDER, PROVIDERS } from '../services/providers.js'
 import { assertTxid, cacheStats, fetchOutputScript, fetchTransaction } from '../services/txProvider.js'
 
@@ -37,6 +38,7 @@ function readQuery (req) {
     selectors: parseSelectors(req.query.field ?? req.query.fields),
     raw: bool(req.query.raw),
     withOrigin: bool(req.query.origin),
+    verify: bool(req.query.verify),
     resolveToken: bool(req.query.resolveToken ?? req.query.deploy),
     fast: bool(req.query.fast),
     inscribedOnly: bool(req.query.inscribed),
@@ -79,12 +81,49 @@ function sendRawValue (res, view, raw, selectors, q) {
 /** Chain position needs an indexer, so it is fetched on request or on selection. */
 const needsTrace = (q) =>
   q.withOrigin ||
+  q.verify ||
   q.selectors.some((s) => s.type === 'view' && (s.path === 'ordinal' || s.path.startsWith('ordinal.')))
+
+/**
+ * Resolves where an ordinal sits in its transfer chain. By default that is an
+ * indexer's answer, flagged as such. With ?verify=1 the same position is
+ * recomputed from transaction bytes and the two are compared - which also
+ * means the origin still resolves when every indexer is down, since walking
+ * backward needs no index at all.
+ */
+async function chainPosition (outpoint, q) {
+  const ordinal = await traceOrdinal(outpoint, { network: q.network })
+  if (!q.verify) return ordinal
+
+  const verification = await verifyOrdinal(outpoint, {
+    network: q.network,
+    providers: q.providers,
+    claim: ordinal
+  })
+
+  ordinal.verification = verification
+  ordinal.verified = verification.proven.origin && verification.agreement.origin !== 'mismatch'
+
+  const disagreements = Object.entries(verification.agreement)
+    .filter(([, result]) => result === 'mismatch')
+    .map(([field]) => ({
+      field,
+      computed: verification[field],
+      claimedBy: ordinal.assertedBy,
+      claimed: field === 'origin' ? ordinal.genesis?.outpoint : ordinal.current?.outpoint
+    }))
+
+  if (disagreements.length) {
+    // The computed value is the one derived from chain data; both are shown
+    // rather than quietly picking a winner.
+    ordinal.disagreement = disagreements
+  }
+  return ordinal
+}
 
 async function withTrace (view, q) {
   if (!needsTrace(q)) return view
-  const ordinal = await traceOrdinal(view.outpoint, { network: q.network })
-  return { ...view, ordinal }
+  return { ...view, ordinal: await chainPosition(view.outpoint, q) }
 }
 
 /** GET /v1/tx/:txid - every output, or one field of every output. */
@@ -237,7 +276,7 @@ router.get('/ordinal/:outpoint', async (req, res, next) => {
     const asked = parseOutpoint(req.params.outpoint)
     const askedOutpoint = formatOutpoint(asked.txid, asked.vout)
 
-    const ordinal = await traceOrdinal(askedOutpoint, { network: q.network })
+    const ordinal = await chainPosition(askedOutpoint, q)
     const genesis = ordinal.genesis?.outpoint
       ? parseOutpoint(ordinal.genesis.outpoint)
       : asked

@@ -138,14 +138,64 @@ about a later transfer that carries no envelope — with the chain position unde
 `originNumber`, `genesisOwner`, `current`, `currentOwner` (or `holder`), `role`,
 `spent`, `spentIn`, `height`, `ordinal`.
 
-**This block is the indexer's word, and says so.** The inscription beside it is
-parsed from transaction bytes whose hash this API checked; the chain position is
-not verified against the chain, so it carries `verified: false` and `assertedBy`
-naming the source. The same enrichment attaches to `/v1/outpoint/...` with
-`?origin=1`, or automatically when you select one of those fields. GorillaPool indexes both
+**By default this block is the indexer's word, and says so** — `verified: false`
+and `assertedBy` naming the source, unlike the inscription beside it, which is
+parsed from transaction bytes whose hash this API checked. Add `?verify=1` to
+close that gap; see below. The same enrichment attaches to `/v1/outpoint/...`
+with `?origin=1`, or automatically when you select one of those fields. GorillaPool indexes both
 directions; WhatsOnChain resolves origin only, so it serves as an origin
 fallback. If no indexer answers, the on-chain parse still returns and the
 `ordinal` block is marked `unavailable` with what was tried.
+
+## Verifying it yourself
+
+`?verify=1` recomputes the ordinal's position from transaction bytes instead of
+taking the indexer's word, and reports whether the two agree:
+
+```bash
+curl "localhost:3000/v1/ordinal/$OUTPOINT?verify=1&field=origin,computedOrigin,current,computedCurrent,agreement"
+```
+
+```json
+{ "origin":   "10f4465c…_0", "computedOrigin":  "10f4465c…_0",
+  "current":  "662104c5…_0", "computedCurrent": "662104c5…_0",
+  "agreement": { "origin": "match", "current": "match" } }
+```
+
+The two directions have genuinely different strength, and the response says
+which is which under `proven`:
+
+**Backward, to the origin — needs no index at all.** A transaction names its own
+inputs, so the walk back is self-contained: take the satoshi's absolute offset
+in the output sequence, find the input covering that same offset, and repeat
+until an ancestor output held more than one satoshi. That outpoint is the
+origin. The indexer's claim can be confirmed or contradicted outright, and the
+origin still resolves when every indexer is down.
+
+**Forward, to the holder — needs a spend lookup**, because "what spent this
+output" is not answerable from the output. Every answer is then checked against
+real bytes: the named transaction must actually contain an input spending the
+outpoint, and ordinal theory is reapplied to find where the satoshi landed. A
+wrong hop is caught — `contradicted: true`. What cannot be reached is omission:
+"nothing has spent it" is not provable from chain data without a full index, so
+a live tip is reported `tipUnrefuted: true` and `proven.stillUnspent: false`
+rather than being called proven.
+
+Burns are recognised rather than guessed at. A satoshi landing past the last
+output went to the miner (`burned: "paid to fee"`); one landing inside a larger
+output is no longer a 1SatOrdinal (`burned: "merged into a 3500 satoshi
+output"`, with `lastSeen`).
+
+Every hop is returned under `hops.backward` / `hops.forward` — outpoint, satoshi
+offset, which input spent it, where it landed — so the conclusion can be audited
+rather than trusted. If the computed answer and the indexer's disagree, both are
+shown under `disagreement`; this API does not quietly pick a winner.
+
+Walks are bounded by `VERIFY_MAX_HOPS` (32) and `VERIFY_MAX_FETCHES` (120), and
+`cost.transactionsFetched` is reported. It is cheaper than it sounds: inputs are
+valued lazily and only up to the one being followed, so with the usual 1Sat
+convention of putting the ordinal first, most hops need no extra fetch at all. A
+nine-transfer chain verifies end to end in about 10 transaction fetches.
 
 ## Query parameters
 
@@ -157,6 +207,7 @@ fallback. If no indexer answers, the on-chain parse still returns and the
 | `network` | `main` (default) or `test` |
 | `provider` / `providers` | source order, e.g. `whatsonchain,bitails` |
 | `origin` | add genesis origin, current holder, and spend data |
+| `verify` | recompute that position from chain data and compare |
 | `resolveToken` | fill in a transfer's symbol and decimals from its deploy |
 | `tokens` | on a txid, only outputs carrying a bsv-20 / bsv-21 token |
 | `fast` | fetch only the output script instead of the whole transaction |
@@ -250,6 +301,7 @@ carry one.
 | `GET /v1/tx/:txid/out/:vout` | one output |
 | `GET /v1/outpoint/:outpoint` | one output by inscription id (`txid_vout`, also `:` `.` `-`) |
 | `GET /v1/ordinal/:outpoint` | genesis origin + current holder, from either end |
+| `GET /v1/ordinal/:outpoint?verify=1` | the same, recomputed from transaction bytes |
 | `GET /v1/outpoint/:outpoint/content` | body served with its own content-type |
 | `GET /v1/tx/:txid/out/:vout/content` | same, addressed by txid + index |
 | `POST /v1/parse` | parse a `rawtx` or bare `script` with no network call |
@@ -268,7 +320,8 @@ Copy `.env.example` to `.env`. Everything has a working default:
 `PORT`, `HOST`, `NETWORK`, `RAW_TX_TIMEOUT_MS`, `CACHE_MAX`, `CACHE_TTL_MS`,
 `MAX_INLINE_CONTENT_BYTES`, `MAX_ENVELOPES_PER_OUTPUT`, `BITAILS_API_KEY`,
 `MAX_TX_BYTES`, `CACHE_MAX_TX_BYTES`, `MAX_CONCURRENT_FETCHES`, `MAX_BODY_BYTES`,
-`RATE_LIMIT`, `RATE_LIMIT_RPM`, `RATE_LIMIT_BURST`, `TRUST_PROXY`.
+`RATE_LIMIT`, `RATE_LIMIT_RPM`, `RATE_LIMIT_BURST`, `TRUST_PROXY`,
+`VERIFY_MAX_HOPS`, `VERIFY_MAX_FETCHES`.
 
 ## Errors
 

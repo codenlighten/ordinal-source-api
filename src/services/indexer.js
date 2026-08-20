@@ -180,3 +180,46 @@ export async function traceOrdinal (outpoint, { network = config.network } = {})
     attempts
   }
 }
+
+/**
+ * "Which transaction spent this outpoint?" - the one question that cannot be
+ * answered from a transaction alone, so it always needs an index. The answer is
+ * checkable though: the named transaction either really does spend the outpoint
+ * or it does not, and the verifier confirms that against raw bytes.
+ *
+ * Returns `{ spent: false }` when no index reports a spend. That is the one
+ * claim this API cannot verify - absence of a spend is not provable from chain
+ * data without a full index of its own - so callers should treat it as
+ * unrefuted rather than proven.
+ */
+export async function lookupSpend (outpoint, { network = config.network } = {}) {
+  const [txid, vout] = outpoint.split('_')
+  const attempts = []
+
+  const sources = [
+    {
+      name: 'whatsonchain',
+      networks: ['main', 'test'],
+      url: `https://api.whatsonchain.com/v1/bsv/${network}/tx/${txid}/${vout}/spent`,
+      read: (d) => (d && d.txid ? { spent: true, spentIn: d.txid, vin: d.vin } : { spent: false })
+    },
+    {
+      name: 'gorillapool',
+      networks: ['main'],
+      url: `${GORILLAPOOL}/txos/${outpoint}`,
+      read: (d) => (d && d.spend ? { spent: true, spentIn: d.spend } : { spent: false })
+    }
+  ].filter((s) => s.networks.includes(network))
+
+  for (const source of sources) {
+    try {
+      return { ...source.read(await getJson(source.url)), source: source.name, attempts }
+    } catch (err) {
+      // A 404 here is a positive answer: the index knows of no spend.
+      if (err.status === 404) return { spent: false, source: source.name, attempts }
+      attempts.push({ indexer: source.name, error: err.message, status: err.status })
+    }
+  }
+
+  return { spent: null, unavailable: true, attempts }
+}

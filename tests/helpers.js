@@ -49,3 +49,18 @@ export async function startApp () {
     close: () => new Promise((resolve) => server.close(resolve))
   }
 }
+
+/**
+ * A transaction shaped enough for the ordinal math: outputs are satoshi values,
+ * inputs name a previous outpoint. `prevTxId` may be given as a short hex seed.
+ */
+export function fakeTx ({ inputs = [], outputs = [] } = {}) {
+  return {
+    hash: 'ff'.repeat(32),
+    inputs: inputs.map((i) => ({
+      prevTxId: Buffer.from((i.prevTxId ?? '00').repeat(32).slice(0, 64), 'hex'),
+      outputIndex: i.outputIndex ?? 0
+    })),
+    outputs: outputs.map((satoshis) => ({ satoshis }))
+  }
+}
