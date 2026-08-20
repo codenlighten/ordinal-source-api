@@ -1,0 +1,29 @@
+{
+  "name": "@smartledger/ordinals",
+  "version": "0.1.0",
+  "description": "1Sat Ordinals protocol in pure functions: envelope parsing, ordinal theory arithmetic, and BSV-20 / BSV-21 token rules",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./package.json": "./package.json"
+  },
+  "files": ["src", "README.md"],
+  "author": "codenlighten <greg@smartledger.technology>",
+  "license": "MIT",
+  "homepage": "https://github.com/codenlighten/ordinal-source-api/tree/main/packages/core#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/codenlighten/ordinal-source-api.git",
+    "directory": "packages/core"
+  },
+  "bugs": { "url": "https://github.com/codenlighten/ordinal-source-api/issues" },
+  "keywords": ["bsv", "bitcoin-sv", "ordinals", "1sat-ordinals", "inscriptions", "bsv20", "bsv21", "ordinal-theory"],
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "@smartledger/bsv": "^8.3.0"
+  }
+}

@@ -1,6 +1,8 @@
 FROM node:22-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
+# Workspace manifests must be present or npm cannot resolve the local package.
+COPY packages/core/package.json ./packages/core/
 RUN npm ci --omit=dev
 
 FROM node:22-alpine
@@ -10,6 +12,9 @@ ENV NODE_ENV=production PORT=3000 HOST=0.0.0.0
 # node:alpine ships a `node` user; nothing here needs root.
 COPY --from=deps --chown=node:node /app/node_modules ./node_modules
 COPY --chown=node:node package.json ./
+# node_modules/@smartledger/ordinals is a symlink into packages/core, so the
+# package has to come along with it.
+COPY --chown=node:node packages ./packages
 COPY --chown=node:node src ./src
 
 USER node

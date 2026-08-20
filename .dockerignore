@@ -3,5 +3,5 @@ npm-debug.log
 .git
 .github
 .env
-tests
+**/tests
 *.md

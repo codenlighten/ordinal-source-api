@@ -1,5 +1,5 @@
 import { ApiError } from './errors.js'
-import { BODY_KEY } from './envelope.js'
+import { BODY_KEY } from '@smartledger/ordinals'
 import {
   VALID_ENCODINGS,
   effectiveEncoding,

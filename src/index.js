@@ -1,8 +1,13 @@
 import { createApp } from './app.js'
 import { config } from './config.js'
 import { logger } from './lib/logger.js'
+import { loadIndex } from './routes/index.js'
 
 const app = createApp()
+
+// A local index, if one was built. Absent simply means the API falls back to
+// asking a third-party indexer, exactly as before.
+await loadIndex()
 
 const server = app.listen(config.port, config.host, () => {
   logger.info('listening', {

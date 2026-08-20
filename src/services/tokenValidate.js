@@ -1,8 +1,5 @@
 import { config } from '../config.js'
-import { parseEnvelopes } from '../lib/envelope.js'
-import { formatOutpoint } from '../lib/outpoint.js'
-import { detectToken } from '../lib/token.js'
-import { inputOutpoint } from '../lib/ordinalMath.js'
+import { formatOutpoint, inputOutpoint, tokenAt, tokenOutputs } from '@smartledger/ordinals'
 import { fetchTransaction } from './txProvider.js'
 
 /**
@@ -39,27 +36,6 @@ const tokenKey = (token) =>
 const isAuth = (token) => token.op === 'auth' || token.op === 'deploy+auth'
 const isDeploy = (token) => token.op.startsWith('deploy')
 const contributes = (token) => !isAuth(token) && token.amount != null
-
-/** The token document on an output, if it carries one. */
-export function tokenAt (script, outpoint) {
-  const { envelopes } = parseEnvelopes(script, { limit: 1 })
-  const envelope = envelopes[0]
-  if (!envelope || !envelope.valid || !envelope.bodyPresent) return null
-
-  const contentType = envelope.fields.get('01')?.toString('utf8') ?? null
-  return detectToken({ body: envelope.body, contentType, outpoint })
-}
-
-/** Token-bearing outputs of a transaction, with their satoshi values. */
-export function tokenOutputs (tx) {
-  const found = []
-  tx.outputs.forEach((output, vout) => {
-    const outpoint = formatOutpoint(tx.hash, vout)
-    const token = tokenAt(output.script, outpoint)
-    if (token) found.push({ vout, outpoint, satoshis: output.satoshis, token })
-  })
-  return found
-}
 
 class Budget {
   constructor (maxFetches) {

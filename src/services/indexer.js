@@ -196,6 +196,12 @@ export async function lookupSpend (outpoint, { network = config.network } = {}) 
   const [txid, vout] = outpoint.split('_')
   const attempts = []
 
+  // An index this instance built answers first: it recorded the spend when it
+  // ingested the block, so there is nothing to ask anyone else.
+  const { localSpend } = await import('../routes/index.js')
+  const local = localSpend(outpoint)
+  if (local) return { ...local, attempts }
+
   const sources = [
     {
       name: 'whatsonchain',

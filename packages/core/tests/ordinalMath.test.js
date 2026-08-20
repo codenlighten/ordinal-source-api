@@ -8,7 +8,7 @@ import {
   outputAtOffset,
   outputOffset,
   totalOutputValue
-} from '../src/lib/ordinalMath.js'
+} from '../src/ordinalMath.js'
 import { fakeTx } from './helpers.js'
 
 test('output offsets are the running sum of preceding output values', () => {

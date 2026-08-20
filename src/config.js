@@ -57,6 +57,13 @@ export const config = {
   verifyMaxHops: int(process.env.VERIFY_MAX_HOPS, 32),
   verifyMaxFetches: int(process.env.VERIFY_MAX_FETCHES, 120),
 
+  // An index snapshot written by `npm run index --out`. When present, the API
+  // answers spend lookups from it instead of asking a third-party indexer.
+  indexFile: process.env.INDEX_FILE || null,
+
+  // 1Sat inscriptions begin around here; earlier blocks hold no tokens.
+  indexStartHeight: int(process.env.INDEX_START_HEIGHT, 780000),
+
   // Token conservation walks the transactions behind a transfer's inputs.
   tokenValidateMaxFetches: int(process.env.TOKEN_VALIDATE_MAX_FETCHES, 60),
   tokenValidateMaxDepth: int(process.env.TOKEN_VALIDATE_MAX_DEPTH, 4),

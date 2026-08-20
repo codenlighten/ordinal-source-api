@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import bsv from '@smartledger/bsv'
-import { parseEnvelopes } from '../src/lib/envelope.js'
+import { parseEnvelopes } from '../src/envelope.js'
 import { concatScripts, envelope, p2pkh } from './helpers.js'
 
 const { Opcode, Script } = bsv

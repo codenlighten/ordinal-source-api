@@ -5,7 +5,7 @@ import {
   inputOutpoint,
   inputSpending,
   outputOffset
-} from '../lib/ordinalMath.js'
+} from '@smartledger/ordinals'
 import { formatOutpoint } from '../lib/outpoint.js'
 import { lookupSpend } from './indexer.js'
 import { fetchTransaction } from './txProvider.js'

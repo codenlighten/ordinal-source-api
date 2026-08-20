@@ -1,5 +1,5 @@
 import { config } from '../config.js'
-import { BODY_KEY, parseEnvelopes } from './envelope.js'
+import { BODY_KEY, parseEnvelopes } from '@smartledger/ordinals'
 import {
   effectiveEncoding,
   encodeValue,
@@ -8,8 +8,8 @@ import {
   sha256
 } from './fields.js'
 import { formatOutpoint } from './outpoint.js'
-import { detectToken } from './token.js'
-import { Opcode, chunkBytes, scriptFromChunks } from './script.js'
+import { detectToken } from '@smartledger/ordinals'
+import { Opcode, chunkBytes, scriptFromChunks } from '@smartledger/ordinals'
 
 const labelFor = (key, def) => {
   if (def) return def.name

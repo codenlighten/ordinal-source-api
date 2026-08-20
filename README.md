@@ -3,14 +3,26 @@
 A read-only HTTP API for [1Sat Ordinals](https://docs.1satordinals.com) on BSV.
 
 Give it a **txid** or an **outpoint**, and optionally name the **ordinal field**
-you want, and it returns just that. Every inscription is parsed from the raw
+you want, and it returns just that. It also builds its own token index, so the
+answers it cannot verify alone stop being assumptions. Every inscription is parsed from the raw
 transaction bytes with [`@smartledger/bsv`](https://www.npmjs.com/package/@smartledger/bsv) —
 the txid is verified locally, so no indexer is trusted for the parse.
 
 ```bash
 npm install
 npm start          # http://localhost:3000
-npm test           # 107 tests, no network required
+npm test           # 129 tests, no network required
+```
+
+The protocol itself lives in [`packages/core`](packages/core) and is published
+as [`@smartledger/ordinals`](packages/core/README.md): envelope parsing, ordinal
+theory arithmetic, and token rules as pure functions, with no network,
+database, or framework. The API and the indexer are both just consumers of it.
+
+```
+packages/core/   the protocol, as pure functions
+src/             the HTTP API
+src/indexer/     the token indexer: ingest, rules, storage
 ```
 
 ## The four ways to ask
@@ -357,6 +369,10 @@ carry one.
 | `POST /v1/parse` | parse a `rawtx` or bare `script` with no network call |
 | `GET /v1/fields` | selectable fields and encodings |
 | `GET /v1/providers` | configured sources and cache state |
+| `GET /v1/index` | what the local index covers |
+| `GET /v1/index/token/:key` | supply and holders from ordered history |
+| `GET /v1/index/address/:address` | token balances for an address |
+| `GET /v1/index/outpoint/:outpoint` | spent or unspent, answered locally |
 | `GET /health` | liveness |
 | `GET /metrics` | Prometheus metrics (`?format=json` to read by eye) |
 
@@ -364,6 +380,82 @@ carry one.
 `{ "script": "76a914...", "satoshis": 1 }` and accepts the same query
 parameters, which makes it useful for validating a transaction before
 broadcast.
+
+## Building your own index
+
+Everything above answers questions about transactions it fetches on demand.
+Some questions cannot be answered that way at all — which deploy claimed a
+ticker first, whether a mint still fits under the supply cap, what spent an
+output — because they are properties of ordered history rather than of any one
+transaction. Those are the ones the API has to mark `notChecked` or
+`verified: false`.
+
+The indexer resolves them by doing the one thing an on-demand API cannot:
+reading the chain **in order**.
+
+```bash
+# one token's own history, without scanning the chain
+npm run index -- --token <outpoint> --out index.json
+
+# or block by block
+npm run index -- --from 793000 --to 793010 --out index.json
+npm run index -- --from 793000 --follow
+
+# then serve it
+INDEX_FILE=index.json npm start
+```
+
+```bash
+curl localhost:3000/v1/index/token/429bf199…_0
+# { "symbol": "BLASTER", "supply": "2100000000000000", "supplyDecided": true,
+#   "holders": 5, "circulating": "102782500000000" }
+
+curl localhost:3000/v1/index/address/1fMyXg2…
+curl localhost:3000/v1/index/outpoint/5dcac02e…_6   # spent or not, answered locally
+```
+
+With an index loaded, `lookupSpend` stops asking a third party — the index
+recorded the spend when it ingested the block — so `?verify=1` runs against
+your own history rather than someone else's.
+
+### What order makes decidable
+
+| Asked of one transaction | Asked of ordered history |
+| --- | --- |
+| "has this ticker been claimed?" — unknowable | the first deploy is already recorded, so later ones are rejected |
+| "does this mint exceed supply?" — unknowable | mints accumulate; the one that crosses the cap is filled to the fraction that fits |
+| "were the inputs valid?" — an assumption | only valid outputs were ever written, so an input in the store is valid by construction |
+| "what spent this?" — ask an indexer | a lookup |
+
+Reorgs are handled by capturing each block's previous values as it is applied,
+so a block that does not build on the tip is rolled back rather than resynced.
+
+### The honest cost
+
+Block-by-block ingest over a public REST API is slow, and the numbers are worth
+knowing before you start. No BSV service serves whole raw blocks, so a block
+means "list the txids, then fetch those transactions" — twenty at a time, at
+about three requests a second before WhatsOnChain throttles you:
+
+| Block | Transactions | Roughly |
+| --- | --- | --- |
+| 781,000 | 1,942 | 19 seconds *(measured)* |
+| 793,000 | 13,025 | ~2 minutes |
+| 792,686 (the ORDI deploy) | 254,173 | ~70 minutes |
+| 800,000 | 541,261 | hours |
+
+So: `--token` replay for a single token's history (a few hundred fetches),
+`--follow` to track the tip, and a node or bulk archive behind the same
+`BlockSource` interface for a real full sync. The indexer backs off politely
+when throttled — it is a client before it is anything else.
+
+### Storage
+
+`MemoryStore` is the reference implementation, with `toJSON`/`fromJSON` for
+snapshots. The interface it satisfies is four record kinds — `utxo`, `token`,
+`spend`, `balance` — and every write goes through `apply`, which captures the
+previous value so a block can be undone. Point that at SQLite or Postgres and
+nothing above it changes.
 
 ## Running it
 
@@ -442,7 +534,8 @@ Copy `.env.example` to `.env`. Everything has a working default:
 `MAX_TX_BYTES`, `CACHE_MAX_TX_BYTES`, `MAX_CONCURRENT_FETCHES`, `MAX_BODY_BYTES`,
 `RATE_LIMIT`, `RATE_LIMIT_RPM`, `RATE_LIMIT_BURST`, `TRUST_PROXY`,
 `VERIFY_MAX_HOPS`, `VERIFY_MAX_FETCHES`, `TOKEN_VALIDATE_MAX_FETCHES`,
-`TOKEN_VALIDATE_MAX_DEPTH`, `LOG_LEVEL`, `LOG_FORMAT`, `SHUTDOWN_GRACE_MS`.
+`TOKEN_VALIDATE_MAX_DEPTH`, `LOG_LEVEL`, `LOG_FORMAT`, `SHUTDOWN_GRACE_MS`,
+`INDEX_FILE`, `INDEX_START_HEIGHT`, `INDEX_CONCURRENCY`.
 
 ## Errors
 

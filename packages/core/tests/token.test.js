@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { applyDeploy, classifyToken, detectToken } from '../src/lib/token.js'
+import { applyDeploy, classifyToken, detectToken } from '../src/token.js'
 
 const OUTPOINT = `${'3b'.repeat(32)}_0`
 const TOKEN_ID = `${'a1'.repeat(32)}_1`

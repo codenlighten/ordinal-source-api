@@ -5,6 +5,7 @@ import { logger } from './lib/logger.js'
 import { render, snapshot } from './lib/metrics.js'
 import { observability } from './lib/observability.js'
 import { rateLimit } from './lib/rateLimit.js'
+import indexRouter, { loadIndex } from './routes/index.js'
 import ordinals from './routes/ordinals.js'
 
 export function createApp () {
@@ -43,6 +44,9 @@ export function createApp () {
         'POST /v1/parse': 'parse a rawtx or script without touching the network',
         'GET /v1/fields': 'selectable fields',
         'GET /v1/providers': 'configured sources',
+        'GET /v1/index': 'what the local index covers, when one is loaded',
+        'GET /v1/index/token/:key': 'supply and holders from ordered history',
+        'GET /v1/index/address/:address': 'token balances for an address',
         'GET /metrics': 'Prometheus metrics (?format=json to read by eye)'
       },
       query: {
@@ -67,6 +71,7 @@ export function createApp () {
   })
 
   app.use('/v1', ordinals)
+  app.use('/v1/index', indexRouter)
 
   app.use((req, res) => {
     res.status(404).json({

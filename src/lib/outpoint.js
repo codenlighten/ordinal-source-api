@@ -1,29 +1,21 @@
+import {
+  formatOutpoint,
+  parseOutpoint as parseCore,
+  parseVout as parseVoutCore,
+  TXID_RE
+} from '@smartledger/ordinals'
 import { ApiError } from './errors.js'
-import { TXID_RE } from '../services/txProvider.js'
 
-/**
- * Accepts the 1Sat inscription id form `<txid>_<vout>` plus the common
- * variants `<txid>:<vout>`, `<txid>.<vout>`, and `<txid>-<vout>`.
- */
-export function parseOutpoint (input) {
-  const raw = String(input || '').trim()
-  const match = /^([0-9a-fA-F]{64})[_:.-](\d{1,10})$/.exec(raw)
-  if (!match) {
-    throw ApiError.badRequest(
-      `invalid outpoint: ${raw || '(empty)'} - expected <txid>_<vout>`
-    )
+/** The core throws plain errors; the API answers with a status code. */
+const wrap = (run) => {
+  try {
+    return run()
+  } catch (err) {
+    throw ApiError.badRequest(err.message)
   }
-  return { txid: match[1].toLowerCase(), vout: Number.parseInt(match[2], 10) }
 }
 
-export function parseVout (input) {
-  const n = Number(input)
-  if (!Number.isInteger(n) || n < 0) {
-    throw ApiError.badRequest(`invalid output index: ${input}`)
-  }
-  return n
-}
+export const parseOutpoint = (input) => wrap(() => parseCore(input))
+export const parseVout = (input) => wrap(() => parseVoutCore(input))
 
-export const formatOutpoint = (txid, vout) => `${txid}_${vout}`
-
-export { TXID_RE }
+export { formatOutpoint, TXID_RE }
