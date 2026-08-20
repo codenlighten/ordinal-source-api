@@ -4,12 +4,10 @@ import {
   effectiveEncoding,
   encodeValue,
   fieldDefByKey,
-  printableText,
   sha256
 } from './fields.js'
+import { detectToken, splitLock } from '@smartledger/ordinals'
 import { formatOutpoint } from './outpoint.js'
-import { detectToken } from '@smartledger/ordinals'
-import { splitLock } from '@smartledger/ordinals'
 
 const labelFor = (key, def) => {
   if (def) return def.name

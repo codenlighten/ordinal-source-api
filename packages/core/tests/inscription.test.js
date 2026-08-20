@@ -62,3 +62,85 @@ test('splitLock is usable on its own', () => {
   assert.equal(lock.toASM(), p2pkh().toASM())
   assert.equal(opReturn.pushes[1].text, 'SET')
 })
+
+test('OP_FALSE OP_RETURN is data, not part of the lock', () => {
+  // The standard safe-data form. Leaving the OP_FALSE on the lock was enough on
+  // its own to stop toAddress resolving, which is what the lock is for.
+  const script = concatScripts(p2pkh(), inscribed('hi'))
+  script.add(Opcode.OP_FALSE).add(Opcode.OP_RETURN).add(Buffer.from('data'))
+
+  // Through the consumer path: the envelope comes off, then the data output.
+  const { lock, opReturn } = inscriptionAt(script)
+  assert.equal(lock.toASM(), p2pkh().toASM())
+  assert.equal(String(lock.toAddress('livenet')), '1FHy8WBx1ZhQ2T86ZftxZUjbiBMQ6dNxeJ')
+  assert.equal(opReturn.pushes.length, 1)
+  assert.equal(opReturn.pushes[0].text, 'data')
+})
+
+test('a lone OP_FALSE that is not a data prefix stays on the lock', () => {
+  const odd = Script.fromASM('OP_FALSE OP_DROP OP_TRUE')
+  const { lock, opReturn } = splitLock(odd)
+  assert.equal(lock.toASM(), odd.toASM())
+  assert.equal(opReturn, null)
+})
+
+test('splitLock takes hex and ASM like every other entry point', () => {
+  const script = concatScripts(p2pkh(), MAP)
+  for (const form of [script, script.toHex(), script.toBuffer(), script.toASM()]) {
+    assert.equal(splitLock(form).lock.toASM(), p2pkh().toASM())
+  }
+})
+
+test('MAP is decoded when another protocol comes first', () => {
+  // BitCom joins protocols in one OP_RETURN with a pipe; MAP is often not first.
+  const joined = Script.fromASM(
+    'OP_RETURN ' +
+    Buffer.from('19HxigV4QyBv3tHpQVcUEQyq1pzZVdoAut').toString('hex') + ' ' +
+    Buffer.from('some file').toString('hex') + ' ' +
+    Buffer.from('|').toString('hex') + ' ' +
+    Buffer.from('1PuQa7K62MiKCtssSLKy1kh56WWU7MtUR5').toString('hex') + ' ' +
+    Buffer.from('SET').toString('hex') + ' ' +
+    Buffer.from('app').toString('hex') + ' ' +
+    Buffer.from('demo').toString('hex')
+  )
+  assert.deepEqual(splitLock(concatScripts(p2pkh(), joined)).opReturn.map, { app: 'demo' })
+})
+
+test('MAP parsing stops at the next protocol rather than reading past it', () => {
+  const trailing = Script.fromASM(
+    'OP_RETURN ' +
+    Buffer.from('1PuQa7K62MiKCtssSLKy1kh56WWU7MtUR5').toString('hex') + ' ' +
+    Buffer.from('SET').toString('hex') + ' ' +
+    Buffer.from('app').toString('hex') + ' ' +
+    Buffer.from('demo').toString('hex') + ' ' +
+    Buffer.from('|').toString('hex') + ' ' +
+    Buffer.from('1SomeOtherProtocol').toString('hex') + ' ' +
+    Buffer.from('notAKey').toString('hex')
+  )
+  assert.deepEqual(splitLock(concatScripts(p2pkh(), trailing)).opReturn.map, { app: 'demo' })
+})
+
+test('an unpaired trailing key is not read as a tag', () => {
+  const odd = Script.fromASM(
+    'OP_RETURN ' +
+    Buffer.from('1PuQa7K62MiKCtssSLKy1kh56WWU7MtUR5').toString('hex') + ' ' +
+    Buffer.from('SET').toString('hex') + ' ' +
+    Buffer.from('app').toString('hex') + ' ' +
+    Buffer.from('demo').toString('hex') + ' ' +
+    Buffer.from('dangling').toString('hex')
+  )
+  assert.deepEqual(splitLock(concatScripts(p2pkh(), odd)).opReturn.map, { app: 'demo' })
+})
+
+test('tokenAt reads a token without doing the lock work', () => {
+  const script = concatScripts(
+    p2pkh(),
+    inscribed('{"p":"bsv-20","op":"mint","tick":"ORDI","amt":"5"}', 'application/bsv-20'),
+    MAP
+  )
+  const token = tokenAt(script, `${'ab'.repeat(32)}_0`)
+  assert.equal(token.tick, 'ORDI')
+  assert.equal(token.amount, '5')
+  // Same answer as the fuller path, just without the discarded work.
+  assert.deepEqual(token, inscriptionAt(script, `${'ab'.repeat(32)}_0`).token)
+})
