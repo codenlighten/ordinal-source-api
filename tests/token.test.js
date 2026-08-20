@@ -104,7 +104,7 @@ test('a transfer reports unknown precision instead of assuming zero', () => {
 test('the scope of the check is stated on the result', () => {
   const t = detect({ p: 'bsv-20', op: 'transfer', id: TOKEN_ID, amt: '1' })
   assert.equal(t.validated, 'document')
-  assert.deepEqual(t.notValidated, ['conservation', 'supply', 'ticker-priority'])
+  assert.deepEqual(t.notValidated, ['conservation', 'supply-limit', 'ticker-priority'])
   assert.equal(t.valid, undefined) // deliberately not called `valid`
 })
 

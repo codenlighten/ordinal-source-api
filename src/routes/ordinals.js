@@ -9,6 +9,7 @@ import { counter } from '../lib/metrics.js'
 import { applyDeploy } from '../lib/token.js'
 import { assertEncoding, parseSelectors, projectOutput, selectBytes } from '../lib/select.js'
 import { traceOrdinal } from '../services/indexer.js'
+import { validateTransaction } from '../services/tokenValidate.js'
 import { verifyOrdinal } from '../services/verify.js'
 import { DEFAULT_ORDER, PROVIDERS } from '../services/providers.js'
 import { assertTxid, cacheStats, fetchOutputScript, fetchTransaction } from '../services/txProvider.js'
@@ -47,6 +48,17 @@ function readQuery (req) {
     raw: bool(req.query.raw),
     withOrigin: bool(req.query.origin),
     verify: bool(req.query.verify),
+    validateTokens: bool(req.query.validateTokens ?? req.query.conservation),
+    depth: (() => {
+      const d = req.query.depth != null ? Number(req.query.depth) : 1
+      if (!Number.isInteger(d) || d < 1 || d > config.tokenValidateMaxDepth) {
+        throw ApiError.badRequest(
+          `invalid depth: ${req.query.depth}`,
+          { valid: `1 to ${config.tokenValidateMaxDepth}` }
+        )
+      }
+      return d
+    })(),
     resolveToken: bool(req.query.resolveToken ?? req.query.deploy),
     fast: bool(req.query.fast),
     inscribedOnly: bool(req.query.inscribed),
@@ -151,11 +163,20 @@ router.get('/tx/:txid', async (req, res, next) => {
     if (q.inscribedOnly) outputs = outputs.filter((o) => o.view.hasInscription)
     if (q.tokensOnly) outputs = outputs.filter((o) => o.view.inscription?.isToken)
 
+    const tokenValidation = q.validateTokens
+      ? await validateTransaction(txid, {
+          network: q.network,
+          providers: q.providers,
+          depth: q.depth
+        })
+      : undefined
+
     res.json({
       txid,
       network: q.network,
       source: fetched.source,
       cached: fetched.cached,
+      ...(tokenValidation ? { tokenValidation } : {}),
       outputCount: fetched.tx.outputs.length,
       inscriptionCount: outputs.filter((o) => o.view.hasInscription).length,
       ordinalCount: outputs.filter((o) => o.view.isOrdinal === true).length,
@@ -214,6 +235,27 @@ async function resolveOutput (txid, vout, q) {
 }
 
 /**
+ * Conservation is a property of a transaction, not of one output, so an
+ * outpoint query validates the transaction that contains it.
+ */
+async function withTokenValidation (view, q, txid) {
+  if (!q.validateTokens) return view
+  try {
+    const validation = await validateTransaction(txid, {
+      network: q.network,
+      providers: q.providers,
+      depth: q.depth
+    })
+    return { ...view, tokenValidation: validation }
+  } catch (err) {
+    return {
+      ...view,
+      tokenValidation: { error: err.message, conserved: null, proven: false }
+    }
+  }
+}
+
+/**
  * A transfer states an amount but not the token's precision or symbol - those
  * live on the deploy it points at. Opt in with ?resolveToken=1 to fetch it.
  */
@@ -244,7 +286,7 @@ async function outputHandler (req, res, next, { txid, vout }) {
     const q = readQuery(req)
     const { view, raw, source, cached } = await resolveOutput(txid, vout, q)
 
-    const resolved = await withTokenDeploy(view, q)
+    const resolved = await withTokenValidation(await withTokenDeploy(view, q), q, txid)
     if (q.raw) return sendRawValue(res, resolved, raw, q.selectors, q)
 
     const enriched = await withTrace(resolved, q)
@@ -300,7 +342,11 @@ router.get('/ordinal/:outpoint', async (req, res, next) => {
     }
 
     const { view, raw, source, cached } = await resolveOutput(genesis.txid, genesis.vout, q)
-    const resolved = await withTokenDeploy(view, q)
+    const resolved = await withTokenValidation(
+      await withTokenDeploy(view, q),
+      q,
+      genesis.txid
+    )
     const enriched = { ...resolved, ordinal: { ...ordinal, queried: { outpoint: askedOutpoint, ...(ordinal.queried || {}) } } }
 
     if (q.raw) return sendRawValue(res, enriched, raw, q.selectors, q)
@@ -409,6 +455,10 @@ router.get('/fields', (_req, res) => {
       'lock', 'lockHex', 'lockAsm', 'address', 'map', 'opReturn', 'warnings',
       'contentTruncated', 'contentUrl'
     ],
+    validation: {
+      fields: ['tokenValidation', 'conserved', 'conservation', 'provenValid'],
+      note: 'conservation is checked per transaction with ?validateTokens=1'
+    },
     tokenFields: [
       'token', 'isToken', 'standard', 'op', 'tokenId', 'tick', 'symbol',
       'amount', 'amountDisplay', 'decimals', 'max'

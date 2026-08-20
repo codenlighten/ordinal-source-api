@@ -57,6 +57,10 @@ export const config = {
   verifyMaxHops: int(process.env.VERIFY_MAX_HOPS, 32),
   verifyMaxFetches: int(process.env.VERIFY_MAX_FETCHES, 120),
 
+  // Token conservation walks the transactions behind a transfer's inputs.
+  tokenValidateMaxFetches: int(process.env.TOKEN_VALIDATE_MAX_FETCHES, 60),
+  tokenValidateMaxDepth: int(process.env.TOKEN_VALIDATE_MAX_DEPTH, 4),
+
   // How long to let in-flight requests drain on SIGTERM before forcing exit.
   shutdownGraceMs: int(process.env.SHUTDOWN_GRACE_MS, 15000),
 

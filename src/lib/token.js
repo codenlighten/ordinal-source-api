@@ -181,7 +181,9 @@ export function classifyToken (json, { outpoint = null, contentType = null } = {
   // need chain-wide state. A well-formed transfer can still be an invalid one.
   token.wellFormed = errors.length === 0
   token.validated = 'document'
-  token.notValidated = ['conservation', 'supply', 'ticker-priority']
+  // Conservation is checkable, just not from one document - see
+  // services/tokenValidate.js, reached with ?validateTokens=1.
+  token.notValidated = ['conservation', 'supply-limit', 'ticker-priority']
   token.errors = errors
   token.warnings = warnings
   token.json = json

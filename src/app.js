@@ -53,6 +53,8 @@ export function createApp () {
         provider: 'gorillapool | whatsonchain | bitails | junglebus (comma separated)',
         origin: 'add genesis origin and current holder',
         verify: 'recompute that position from chain data and compare',
+        validateTokens: 'check token conservation across the transaction',
+        depth: 'how far back to validate token inputs (1-4)',
         resolveToken: 'fill in a transfer\'s symbol and decimals from its deploy',
         tokens: 'only outputs carrying a bsv-20 / bsv-21 token',
         fast: 'fetch only the output script instead of the whole transaction',

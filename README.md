@@ -10,7 +10,7 @@ the txid is verified locally, so no indexer is trusted for the parse.
 ```bash
 npm install
 npm start          # http://localhost:3000
-npm test           # 94 tests, no network required
+npm test           # 107 tests, no network required
 ```
 
 ## The four ways to ask
@@ -96,13 +96,11 @@ fields per op, `amt` prohibited on `auth`/`deploy+auth`, uint64 range, `dec` ≤
 `wellFormed` with `errors`.
 
 **The field is called `wellFormed`, not `valid`, on purpose.** It says the
-document is correctly shaped for the operation it declares. It does *not* say
-the operation is valid on chain: token conservation across a transaction's
-inputs and outputs, circulating supply, and which deploy has claim to a ticker
-are all chain-wide questions, not properties of one output. The response states
-its own scope with `validated: "document"` and
-`notValidated: ["conservation", "supply", "ticker-priority"]`, so a well-formed
-transfer that over-spends its inputs is not mistaken for a settled one. Unrecognised JSON fields are preserved in `token.json` and
+document is correctly shaped for the operation it declares — not that the
+operation is legal on chain. The response states its own scope with
+`validated: "document"` and `notValidated: ["conservation", "supply-limit",
+"ticker-priority"]`. For conservation, see below; it is checkable, just not from
+one document. Unrecognised JSON fields are preserved in `token.json` and
 ignored, as BSV-21 requires. Historical BSV-20 inscriptions using `text/plain` are
 still detected, with a warning noting the content type.
 
@@ -111,6 +109,55 @@ restate `dec` reports `decimals: null` and no `amountDisplay`, plus
 `decimalsFrom` naming the deploy to read it from — rather than silently assuming
 zero and displaying a wrong number. `?resolveToken=1` fetches that deploy and
 fills in symbol, decimals, and the scaled amount.
+
+## Is the transfer actually valid?
+
+`?validateTokens=1` checks a transfer against the chain: do its token inputs
+cover what its outputs claim to move?
+
+```bash
+curl "localhost:3000/v1/tx/$TXID?validateTokens=1"
+```
+
+```json
+{ "tokenValidation": {
+    "conserved": true, "proven": false,
+    "assuming": "the token inputs are themselves valid",
+    "checked":    ["document", "conservation", "satoshi-value", "auth-input"],
+    "notChecked": ["ticker-priority", "supply-limit"],
+    "tokens": [{ "tokenId": "429bf199…_0",
+                 "inputTotal": "6100000000", "outputTotal": "6100000000",
+                 "conserved": true, "errors": [] }] } }
+```
+
+**Conservation is a property of a transaction, not of an output** — an output
+cannot be over-spent by itself — so validation always runs over the whole
+transaction, and an outpoint query validates the transaction containing it.
+
+What is decided, and what is not:
+
+| | |
+| --- | --- |
+| **Decided here** | conservation across the transaction, the 1 satoshi requirement on token outputs, a mint's auth input, and that a deploy defines its own id |
+| **Decided by walking** | whether the token inputs were themselves valid — `?depth=2..4` recurses toward the deploy; when every path reaches one, `proven: true` and the assumption disappears |
+| **Not decidable** | "first is first" ticker priority and BSV-20 supply limits, which need every deploy and mint that ever happened. Listed in `notChecked`, never reported as valid |
+
+At `depth=1` the answer is honest about resting on something: `conserved: true`
+with `assuming: "the token inputs are themselves valid"`. That single hop is
+still what catches the case that actually matters — outputs claiming more than
+the inputs carry.
+
+Deploys create supply rather than moving it, so a `deploy+mint` needs nothing
+behind it and comes back `proven: true` on its own. Transfers and burns both
+consume balance (a burn is not a discount), and tokens a transfer leaves behind
+are reported as `burnedSurplus` rather than quietly dropped. BSV-20 balances are
+keyed by ticker case-insensitively, BSV-21 by token id, so the two standards
+validate through the same path. An input that cannot be fetched is listed in
+`unresolvedInputs` and makes the result unconserved — never silently skipped.
+
+Selectors: `conserved`, `provenValid`, `assuming`, `conservation`,
+`tokenValidation`. Bounded by `TOKEN_VALIDATE_MAX_FETCHES` (60) and
+`TOKEN_VALIDATE_MAX_DEPTH` (4).
 
 ## Origin and current holder
 
@@ -208,6 +255,8 @@ nine-transfer chain verifies end to end in about 10 transaction fetches.
 | `provider` / `providers` | source order, e.g. `whatsonchain,bitails` |
 | `origin` | add genesis origin, current holder, and spend data |
 | `verify` | recompute that position from chain data and compare |
+| `validateTokens` | check token conservation across the transaction |
+| `depth` | how far back to validate token inputs (1-4) |
 | `resolveToken` | fill in a transfer's symbol and decimals from its deploy |
 | `tokens` | on a txid, only outputs carrying a bsv-20 / bsv-21 token |
 | `fast` | fetch only the output script instead of the whole transaction |
@@ -298,6 +347,7 @@ carry one.
 | Route | Purpose |
 | --- | --- |
 | `GET /v1/tx/:txid` | every output of a transaction |
+| `GET /v1/tx/:txid?validateTokens=1` | token conservation across that transaction |
 | `GET /v1/tx/:txid/out/:vout` | one output |
 | `GET /v1/outpoint/:outpoint` | one output by inscription id (`txid_vout`, also `:` `.` `-`) |
 | `GET /v1/ordinal/:outpoint` | genesis origin + current holder, from either end |
@@ -391,8 +441,8 @@ Copy `.env.example` to `.env`. Everything has a working default:
 `MAX_INLINE_CONTENT_BYTES`, `MAX_ENVELOPES_PER_OUTPUT`, `BITAILS_API_KEY`,
 `MAX_TX_BYTES`, `CACHE_MAX_TX_BYTES`, `MAX_CONCURRENT_FETCHES`, `MAX_BODY_BYTES`,
 `RATE_LIMIT`, `RATE_LIMIT_RPM`, `RATE_LIMIT_BURST`, `TRUST_PROXY`,
-`VERIFY_MAX_HOPS`, `VERIFY_MAX_FETCHES`, `LOG_LEVEL`, `LOG_FORMAT`,
-`SHUTDOWN_GRACE_MS`.
+`VERIFY_MAX_HOPS`, `VERIFY_MAX_FETCHES`, `TOKEN_VALIDATE_MAX_FETCHES`,
+`TOKEN_VALIDATE_MAX_DEPTH`, `LOG_LEVEL`, `LOG_FORMAT`, `SHUTDOWN_GRACE_MS`.
 
 ## Errors
 
