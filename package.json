@@ -1,9 +1,30 @@
 {
   "name": "ordinal-source-api",
   "version": "0.1.0",
-  "description": "1Sat Ordinals source API for BSV \u2014 resolve inscriptions by txid or outpoint and select individual ordinal envelope fields",
+  "description": "1Sat Ordinals API for BSV: resolve inscriptions by txid or outpoint, select any ordinal field, and verify origin, holder, and token conservation against the chain",
   "type": "module",
   "main": "src/index.js",
+  "author": "codenlighten <greg@smartledger.technology>",
+  "license": "MIT",
+  "homepage": "https://github.com/codenlighten/ordinal-source-api#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/codenlighten/ordinal-source-api.git"
+  },
+  "bugs": {
+    "url": "https://github.com/codenlighten/ordinal-source-api/issues"
+  },
+  "keywords": [
+    "bsv",
+    "bitcoin-sv",
+    "ordinals",
+    "1sat-ordinals",
+    "inscriptions",
+    "bsv20",
+    "bsv21",
+    "ordinal-theory",
+    "api"
+  ],
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
@@ -12,7 +33,6 @@
   "engines": {
     "node": ">=20"
   },
-  "license": "MIT",
   "dependencies": {
     "@smartledger/bsv": "^8.3.0",
     "dotenv": "^17.2.3",
