@@ -8,7 +8,13 @@
     ".": "./src/index.js",
     "./package.json": "./package.json"
   },
-  "files": ["src", "README.md"],
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "author": "codenlighten <greg@smartledger.technology>",
   "license": "MIT",
   "homepage": "https://github.com/codenlighten/ordinal-source-api/tree/main/packages/core#readme",
@@ -17,12 +23,25 @@
     "url": "git+https://github.com/codenlighten/ordinal-source-api.git",
     "directory": "packages/core"
   },
-  "bugs": { "url": "https://github.com/codenlighten/ordinal-source-api/issues" },
-  "keywords": ["bsv", "bitcoin-sv", "ordinals", "1sat-ordinals", "inscriptions", "bsv20", "bsv21", "ordinal-theory"],
+  "bugs": {
+    "url": "https://github.com/codenlighten/ordinal-source-api/issues"
+  },
+  "keywords": [
+    "bsv",
+    "bitcoin-sv",
+    "ordinals",
+    "1sat-ordinals",
+    "inscriptions",
+    "bsv20",
+    "bsv21",
+    "ordinal-theory"
+  ],
   "scripts": {
     "test": "node --test"
   },
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
     "@smartledger/bsv": "^8.3.0"
   }
