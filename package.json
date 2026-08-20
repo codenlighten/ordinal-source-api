@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "test": "LOG_LEVEL=silent node --test \"tests/**/*.test.js\""
+    "test": "LOG_LEVEL=silent node --test"
   },
   "engines": {
     "node": ">=20"
