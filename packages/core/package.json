@@ -43,6 +43,6 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@smartledger/bsv": "^8.3.0"
+    "@smartledger/bsv": "^8.3.1"
   }
 }
