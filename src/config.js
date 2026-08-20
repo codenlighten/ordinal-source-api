@@ -57,6 +57,13 @@ export const config = {
   verifyMaxHops: int(process.env.VERIFY_MAX_HOPS, 32),
   verifyMaxFetches: int(process.env.VERIFY_MAX_FETCHES, 120),
 
+  // How long to let in-flight requests drain on SIGTERM before forcing exit.
+  shutdownGraceMs: int(process.env.SHUTDOWN_GRACE_MS, 15000),
+
+  // debug | info | warn | error | silent, and json | pretty
+  logLevel: (process.env.LOG_LEVEL || 'info').toLowerCase(),
+  logFormat: (process.env.LOG_FORMAT || 'json').toLowerCase(),
+
   // Set when running behind a proxy so the rate limiter sees real client IPs.
   trustProxy: process.env.TRUST_PROXY || false
 }

@@ -5,6 +5,7 @@ import { ApiError } from '../lib/errors.js'
 import { FIELD_DEFS } from '../lib/fields.js'
 import { buildOutputView, buildTransactionView } from '../lib/inscription.js'
 import { formatOutpoint, parseOutpoint, parseVout } from '../lib/outpoint.js'
+import { counter } from '../lib/metrics.js'
 import { applyDeploy } from '../lib/token.js'
 import { assertEncoding, parseSelectors, projectOutput, selectBytes } from '../lib/select.js'
 import { traceOrdinal } from '../services/indexer.js'
@@ -14,6 +15,13 @@ import { assertTxid, cacheStats, fetchOutputScript, fetchTransaction } from '../
 
 const { Transaction } = bsv
 const router = Router()
+
+// Express resets req.baseUrl once an error reaches the app-level handler, which
+// would otherwise label the same route two different ways in metrics.
+router.use((req, _res, next) => {
+  req.routeBase = req.baseUrl
+  next()
+})
 
 const bool = (v, fallback = false) => {
   if (v == null || v === '') return fallback
@@ -103,6 +111,12 @@ async function chainPosition (outpoint, q) {
 
   ordinal.verification = verification
   ordinal.verified = verification.proven.origin && verification.agreement.origin !== 'mismatch'
+
+  counter('ordinal_api_verify_total', {
+    origin: verification.agreement.origin,
+    current: verification.agreement.current,
+    contradicted: String(Boolean(verification.contradicted))
+  })
 
   const disagreements = Object.entries(verification.agreement)
     .filter(([, result]) => result === 'mismatch')

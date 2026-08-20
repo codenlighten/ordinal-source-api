@@ -1,6 +1,8 @@
 import bsv from '@smartledger/bsv'
 import { config } from '../config.js'
 import { ApiError } from '../lib/errors.js'
+import { logger } from '../lib/logger.js'
+import { counter, observe } from '../lib/metrics.js'
 import { TtlCache } from './cache.js'
 import { resolveProviders } from './providers.js'
 
@@ -83,11 +85,20 @@ function release () {
   }
 }
 
+const outcomeOf = (err) => {
+  if (err.tooLarge) return 'too_large'
+  if (err.name === 'AbortError') return 'timeout'
+  if (err.status === 404) return 'not_found'
+  if (err.status) return `http_${err.status}`
+  return 'error'
+}
+
 async function attempt (provider, mode, params, { timeoutMs, limit }) {
   const url = provider[mode].url(params)
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   const started = Date.now()
+  const labels = { provider: provider.name, mode }
   try {
     const res = await withSlot(() => fetch(url, {
       signal: controller.signal,
@@ -99,7 +110,26 @@ async function attempt (provider, mode, params, { timeoutMs, limit }) {
       err.status = res.status
       throw err
     }
-    return { bytes: provider[mode].parse(await readCapped(res, limit)), ms: Date.now() - started }
+    const bytes = provider[mode].parse(await readCapped(res, limit))
+    const ms = Date.now() - started
+    counter('ordinal_api_upstream_requests_total', { ...labels, outcome: 'ok' })
+    observe('ordinal_api_upstream_seconds', ms / 1000, labels)
+    return { bytes, ms }
+  } catch (err) {
+    const outcome = outcomeOf(err)
+    counter('ordinal_api_upstream_requests_total', { ...labels, outcome })
+    observe('ordinal_api_upstream_seconds', (Date.now() - started) / 1000, labels)
+    // A provider quietly degrading is otherwise invisible until every one of
+    // them fails, so each failed attempt is logged even though it is retried.
+    logger.warn('upstream attempt failed', {
+      provider: provider.name,
+      mode,
+      outcome,
+      status: err.status,
+      error: err.message,
+      ...params
+    })
+    throw err
   } finally {
     clearTimeout(timer)
   }
@@ -114,7 +144,10 @@ const inFlight = new Map()
 
 function coalesce (key, run) {
   const running = inFlight.get(key)
-  if (running) return running
+  if (running) {
+    counter('ordinal_api_coalesced_total')
+    return running
+  }
   const promise = run().finally(() => inFlight.delete(key))
   inFlight.set(key, promise)
   return promise
@@ -152,8 +185,10 @@ export async function fetchTransaction (
   // otherwise an explicit ?provider= would be answered by a different source.
   const cached = txCache.get(cacheKey)
   if (cached && chain.some((p) => p.name === cached.source)) {
+    counter('ordinal_api_cache_total', { kind: 'transaction', result: 'hit' })
     return { ...cached, tx: new Transaction(cached.bytes), attempts: [], cached: true }
   }
+  counter('ordinal_api_cache_total', { kind: 'transaction', result: 'miss' })
 
   const limit = maxBytes ?? config.maxTxBytes
   const names = chain.map((p) => p.name).join(',')
@@ -206,8 +241,10 @@ export async function fetchOutputScript (
 
   const cached = scriptCache.get(cacheKey)
   if (cached && chain.some((p) => p.name === cached.source)) {
+    counter('ordinal_api_cache_total', { kind: 'output', result: 'hit' })
     return { ...cached, attempts: [], cached: true }
   }
+  counter('ordinal_api_cache_total', { kind: 'output', result: 'miss' })
 
   const limit = maxBytes ?? config.maxTxBytes
   const names = chain.map((p) => p.name).join(',')

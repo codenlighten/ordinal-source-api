@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20', '22']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      # The suite is offline: fixtures and mocked fetch, no provider is called.
+      - run: npm test
+
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Boot the server and check it serves
+        run: |
+          PORT=3000 LOG_FORMAT=pretty node src/index.js &
+          for i in $(seq 1 30); do
+            curl -sf localhost:3000/health >/dev/null && break
+            sleep 0.2
+          done
+          curl -sf localhost:3000/health | tee /dev/stderr | grep -q '"ok": true'
+          curl -sf localhost:3000/v1/fields >/dev/null
+          curl -sf localhost:3000/metrics | grep -q ordinal_api_http_requests_total
+          kill %1
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t ordinal-source-api .
+      - name: Run the image and check its health
+        run: |
+          docker run -d --name api -p 3000:3000 ordinal-source-api
+          for i in $(seq 1 30); do
+            curl -sf localhost:3000/health >/dev/null && break
+            sleep 0.5
+          done
+          curl -sf localhost:3000/health
+          docker logs api
+          docker rm -f api

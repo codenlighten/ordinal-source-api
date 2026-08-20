@@ -1,4 +1,5 @@
 import { config } from '../config.js'
+import { counter } from './metrics.js'
 
 /**
  * Per-IP token bucket.
@@ -38,6 +39,7 @@ export function rateLimit ({
     if (bucket.tokens < 1) {
       const retryAfter = Math.ceil((1 - bucket.tokens) / refillPerMs / 1000)
       buckets.set(key, bucket)
+      counter('ordinal_api_rate_limited_total')
       res.set('retry-after', String(Math.max(1, retryAfter)))
       res.set('x-ratelimit-limit', String(perMinute))
       res.set('x-ratelimit-remaining', '0')

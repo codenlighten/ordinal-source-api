@@ -10,7 +10,7 @@ the txid is verified locally, so no indexer is trusted for the parse.
 ```bash
 npm install
 npm start          # http://localhost:3000
-npm test
+npm test           # 94 tests, no network required
 ```
 
 ## The four ways to ask
@@ -308,11 +308,81 @@ carry one.
 | `GET /v1/fields` | selectable fields and encodings |
 | `GET /v1/providers` | configured sources and cache state |
 | `GET /health` | liveness |
+| `GET /metrics` | Prometheus metrics (`?format=json` to read by eye) |
 
 `POST /v1/parse` takes `{ "rawtx": "01000000..." }` or
 `{ "script": "76a914...", "satoshis": 1 }` and accepts the same query
 parameters, which makes it useful for validating a transaction before
 broadcast.
+
+## Running it
+
+```bash
+npm start                                  # http://localhost:3000
+LOG_FORMAT=pretty LOG_LEVEL=debug npm run dev
+
+docker build -t ordinal-source-api .
+docker run -p 3000:3000 ordinal-source-api
+```
+
+The image runs as the `node` user, carries no dev dependencies or tests, and
+declares a `HEALTHCHECK` against `/health`. `SIGTERM` drains in-flight requests
+before exiting — downloads can be long — and forces exit after
+`SHUTDOWN_GRACE_MS` (15s) rather than hanging on a stuck socket.
+
+## Observability
+
+**Logs** are one JSON object per line on stdout (`LOG_FORMAT=pretty` for a
+readable dev format, `LOG_LEVEL` from `debug` to `silent`):
+
+```json
+{"ts":"…","level":"info","msg":"request","requestId":"a2c387dd-…",
+ "method":"GET","route":"/v1/outpoint/:outpoint","status":200,"ms":317}
+```
+
+Every request gets an id — an inbound `x-request-id` is honoured so a trace
+survives a proxy — echoed in the response header and repeated in the error body,
+so a user's failure can be found in the logs from the id alone.
+
+A provider degrading is logged even when the request succeeds by failing over to
+the next one, because that is otherwise invisible until every provider is down:
+
+```json
+{"level":"warn","msg":"upstream attempt failed","provider":"bitails",
+ "outcome":"not_found","status":404,"txid":"10f4465c…"}
+```
+
+**Metrics** at `GET /metrics` in Prometheus format, or `?format=json` to read by
+eye:
+
+| Metric | What it tells you |
+| --- | --- |
+| `ordinal_api_http_requests_total` | traffic by route pattern and status |
+| `ordinal_api_http_request_seconds` | latency histogram per route |
+| `ordinal_api_upstream_requests_total` | per provider: `ok`, `not_found`, `timeout`, `too_large`, `http_5xx` |
+| `ordinal_api_upstream_seconds` | how slow each provider is being |
+| `ordinal_api_cache_total` | hits and misses, transaction and output |
+| `ordinal_api_coalesced_total` | fetches saved by joining an in-flight request |
+| `ordinal_api_rate_limited_total` | requests rejected by the bucket |
+| `ordinal_api_verify_total` | verification outcomes: match, mismatch, contradicted |
+| `ordinal_api_uptime_seconds`, `ordinal_api_memory_bytes` | process health |
+
+Labels are deliberately low cardinality: routes are recorded as patterns
+(`/v1/outpoint/:outpoint`), never as concrete paths, so a million txids do not
+become a million time series. Unmatched requests are labelled `unmatched`.
+
+`ordinal_api_upstream_requests_total{provider="bitails",outcome="not_found"}`
+climbing while gorillapool stays flat is the shape of a provider going bad —
+which is exactly what happened to Bitails while this was being built.
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on push and pull request:
+
+- **test** — the suite on Node 20 and 22. It is fully offline: fixtures and a
+  mocked `fetch`, so CI never depends on a provider being up.
+- **smoke** — boots the server and checks `/health`, `/v1/fields`, `/metrics`.
+- **docker** — builds the image, runs it, and waits for it to answer.
 
 ## Configuration
 
@@ -321,7 +391,8 @@ Copy `.env.example` to `.env`. Everything has a working default:
 `MAX_INLINE_CONTENT_BYTES`, `MAX_ENVELOPES_PER_OUTPUT`, `BITAILS_API_KEY`,
 `MAX_TX_BYTES`, `CACHE_MAX_TX_BYTES`, `MAX_CONCURRENT_FETCHES`, `MAX_BODY_BYTES`,
 `RATE_LIMIT`, `RATE_LIMIT_RPM`, `RATE_LIMIT_BURST`, `TRUST_PROXY`,
-`VERIFY_MAX_HOPS`, `VERIFY_MAX_FETCHES`.
+`VERIFY_MAX_HOPS`, `VERIFY_MAX_FETCHES`, `LOG_LEVEL`, `LOG_FORMAT`,
+`SHUTDOWN_GRACE_MS`.
 
 ## Errors
 

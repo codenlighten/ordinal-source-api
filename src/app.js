@@ -1,6 +1,9 @@
 import express from 'express'
 import { config } from './config.js'
 import { ApiError } from './lib/errors.js'
+import { logger } from './lib/logger.js'
+import { render, snapshot } from './lib/metrics.js'
+import { observability } from './lib/observability.js'
 import { rateLimit } from './lib/rateLimit.js'
 import ordinals from './routes/ordinals.js'
 
@@ -10,6 +13,7 @@ export function createApp () {
   app.set('json spaces', 2)
   if (config.trustProxy) app.set('trust proxy', config.trustProxy)
   app.use(express.json({ limit: config.maxBodyBytes }))
+  app.use(observability())
 
   if (config.rateLimit.enabled) {
     app.use(rateLimit({ skip: (req) => req.path === '/health' }))
@@ -17,6 +21,12 @@ export function createApp () {
 
   app.get('/health', (_req, res) => {
     res.json({ ok: true, network: config.network, uptime: process.uptime() })
+  })
+
+  /** Prometheus exposition by default; ?format=json to read it by eye. */
+  app.get('/metrics', (req, res) => {
+    if (String(req.query.format).toLowerCase() === 'json') return res.json(snapshot())
+    res.type('text/plain; version=0.0.4; charset=utf-8').send(render())
   })
 
   app.get('/', (_req, res) => {
@@ -32,7 +42,8 @@ export function createApp () {
         'GET /v1/ordinal/:outpoint?verify=1': 'recompute both from transaction bytes',
         'POST /v1/parse': 'parse a rawtx or script without touching the network',
         'GET /v1/fields': 'selectable fields',
-        'GET /v1/providers': 'configured sources'
+        'GET /v1/providers': 'configured sources',
+        'GET /metrics': 'Prometheus metrics (?format=json to read by eye)'
       },
       query: {
         field: 'contentType | content | tick | amount | origin | currentOwner | 1 | 0x0b | ...',
@@ -56,21 +67,49 @@ export function createApp () {
   app.use('/v1', ordinals)
 
   app.use((req, res) => {
-    res.status(404).json({ error: { code: 'not_found', message: `no route for ${req.method} ${req.path}` } })
+    res.status(404).json({
+      error: {
+        code: 'not_found',
+        message: `no route for ${req.method} ${req.path}`,
+        requestId: req.id
+      }
+    })
   })
 
-  app.use((err, _req, res, _next) => {
+  app.use((err, req, res, _next) => {
+    const log = req.log ?? logger
+    const requestId = req.id
+
     if (err instanceof ApiError) {
+      log[err.status >= 500 ? 'error' : 'warn']('request failed', {
+        code: err.code,
+        status: err.status,
+        error: err.message,
+        details: err.details
+      })
       return res.status(err.status).json({
-        error: { code: err.code, message: err.message, ...(err.details ? { details: err.details } : {}) }
+        error: {
+          code: err.code,
+          message: err.message,
+          ...(err.details ? { details: err.details } : {}),
+          requestId
+        }
       })
     }
     if (err instanceof SyntaxError && 'body' in err) {
-      return res.status(400).json({ error: { code: 'bad_request', message: 'invalid JSON body' } })
+      log.warn('invalid JSON body', { error: err.message })
+      return res.status(400).json({
+        error: { code: 'bad_request', message: 'invalid JSON body', requestId }
+      })
     }
     // Malformed hex, truncated transactions and similar parse failures.
+    log.warn('request could not be processed', { error: err.message, stack: err.stack })
     return res.status(400).json({
-      error: { code: 'parse_error', message: err.message || 'request could not be processed' }
+      error: {
+        code: 'parse_error',
+        message: err.message || 'request could not be processed',
+        requestId
+      }
     })
   })
 
