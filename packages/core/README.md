@@ -19,8 +19,13 @@ const insc = inscriptionAt(output.script, `${txid}_${vout}`)
 insc.contentType   // 'image/png'
 insc.content       // Buffer
 insc.token         // BSV-20 / BSV-21 document, or null
-insc.lock          // the locking script, envelope removed
+insc.lock          // the locking script alone - toAddress works on it
+insc.opReturn      // trailing OP_RETURN data, MAP tags decoded
 ```
+
+`lock` is the locking script with both the envelope *and* any trailing
+`OP_RETURN` removed, because that is what a caller wants it for: deriving an
+address from a script with an `OP_RETURN` still attached simply fails.
 
 `parseEnvelopes` gives the full picture when you need it: every field/value pair
 (not just content-type), `OP_1`-`OP_16` aliases normalised, repeated fields

@@ -1,6 +1,6 @@
 {
   "name": "@smartledger/ordinals",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "1Sat Ordinals protocol in pure functions: envelope parsing, ordinal theory arithmetic, and BSV-20 / BSV-21 token rules",
   "type": "module",
   "main": "src/index.js",
