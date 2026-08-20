@@ -1,21 +1,28 @@
 /**
  * Raw-transaction sources. Each provider returns the full serialized transaction
  * so this API can verify the txid itself rather than trusting a source's parsing.
+ * A provider's `parse` receives the response body as a Buffer and returns the
+ * raw transaction bytes.
  *
  * Some providers can also serve a single output script, which avoids pulling a
  * multi-megabyte inscription transaction just to read one outpoint. That path
  * cannot report the output's satoshi value, so it is opt-in.
  */
 
-const asHex = async (res) => {
-  const text = (await res.text()).trim()
+/**
+ * Parsers return raw transaction BYTES. Nothing is converted to a hex string on
+ * the way in: an inscription can be a video or an audio file, and holding one as
+ * hex doubles its footprint for no benefit.
+ */
+const asHex = (buf) => {
+  const text = buf.toString('utf8').trim()
   if (!/^[0-9a-fA-F]+$/.test(text) || text.length % 2 !== 0) {
     throw new Error(`expected hex, got ${JSON.stringify(text.slice(0, 80))}`)
   }
-  return text.toLowerCase()
+  return Buffer.from(text, 'hex')
 }
 
-const asBinary = async (res) => Buffer.from(await res.arrayBuffer()).toString('hex')
+const asBinary = (buf) => buf
 
 export const PROVIDERS = {
   /** GorillaPool - the 1Sat Ordinals indexer. Mainnet only. */
@@ -31,10 +38,10 @@ export const PROVIDERS = {
     networks: ['main'],
     tx: {
       url: ({ txid }) => `https://junglebus.gorillapool.io/v1/transaction/get/${txid}`,
-      parse: async (res) => {
-        const body = await res.json()
+      parse: (buf) => {
+        const body = JSON.parse(buf.toString('utf8'))
         if (!body || !body.transaction) throw new Error('no transaction field in response')
-        return Buffer.from(body.transaction, 'base64').toString('hex')
+        return Buffer.from(body.transaction, 'base64')
       }
     }
   },

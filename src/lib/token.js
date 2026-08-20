@@ -1,6 +1,13 @@
 /**
  * BSV-20 and BSV-21 detection from inscription content.
  *
+ * What this asserts: the inscription body is a bsv-20 protocol document, and
+ * its fields are well formed for the operation it declares. What it does not
+ * assert: that the operation is valid on chain. Token conservation, supply
+ * limits, and ticker priority are consensus questions over the whole chain,
+ * not properties of a single output, so `wellFormed` is deliberately not
+ * called `valid`.
+ *
  * Both standards inscribe JSON with `"p":"bsv-20"` and both use the content
  * type `application/bsv-20`. They are told apart by their identifier:
  *
@@ -97,7 +104,8 @@ export function classifyToken (json, { outpoint = null, contentType = null } = {
       standard: 'unknown',
       protocol: 'bsv-20',
       op: op || null,
-      valid: false,
+      wellFormed: false,
+      validated: 'document',
       errors: [`unrecognised op: ${JSON.stringify(json.op ?? null)}`],
       warnings,
       json
@@ -167,7 +175,13 @@ export function classifyToken (json, { outpoint = null, contentType = null } = {
     token.decimalsFrom = token.id // read precision from the deploy inscription
   }
 
-  token.valid = errors.length === 0
+  // Scope matters: this checks the shape of one document in isolation. It does
+  // NOT check token conservation across a transaction's inputs and outputs,
+  // circulating supply, or which deploy has claim to a ticker - all of which
+  // need chain-wide state. A well-formed transfer can still be an invalid one.
+  token.wellFormed = errors.length === 0
+  token.validated = 'document'
+  token.notValidated = ['conservation', 'supply', 'ticker-priority']
   token.errors = errors
   token.warnings = warnings
   token.json = json

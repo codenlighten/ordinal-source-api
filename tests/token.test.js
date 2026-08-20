@@ -27,7 +27,7 @@ test('BSV-20 deploy is identified by its ticker', () => {
   assert.equal(t.max, '21000000')
   assert.equal(t.limit, '1000')
   assert.equal(t.id, OUTPOINT) // a deploy claims the ticker at its own outpoint
-  assert.equal(t.valid, true)
+  assert.equal(t.wellFormed, true)
 })
 
 test('BSV-20 mint and transfer carry a ticker and an amount', () => {
@@ -36,7 +36,7 @@ test('BSV-20 mint and transfer carry a ticker and an amount', () => {
     assert.equal(t.standard, 'BSV-20')
     assert.equal(t.op, op)
     assert.equal(t.amount, '1000')
-    assert.equal(t.valid, true)
+    assert.equal(t.wellFormed, true)
   }
 })
 
@@ -56,14 +56,14 @@ test('auth operations carry authority, not an amount', () => {
   const auth = detect({ p: 'bsv-20', op: 'deploy+auth', sym: 'AUTH' })
   assert.equal(auth.standard, 'BSV-21')
   assert.equal(auth.authority, true)
-  assert.equal(auth.valid, true)
+  assert.equal(auth.wellFormed, true)
 
   const withAmt = detect({ p: 'bsv-20', op: 'auth', id: TOKEN_ID, amt: '5' })
-  assert.equal(withAmt.valid, false)
+  assert.equal(withAmt.wellFormed, false)
   assert.match(withAmt.errors.join(' '), /amt must not be present/)
 })
 
-test('invalid documents are reported rather than dropped', () => {
+test('malformed documents are reported rather than dropped', () => {
   assert.match(detect({ p: 'bsv-20', op: 'deploy', max: '1' }).errors.join(' '), /tick is required/)
   assert.match(detect({ p: 'bsv-20', op: 'deploy', tick: 'TOOLONG', max: '1' }).errors.join(' '), /4 characters/)
   assert.match(detect({ p: 'bsv-20', op: 'transfer', id: 'nope', amt: '1' }).errors.join(' '), /<txid>_<vout>/)
@@ -74,13 +74,13 @@ test('invalid documents are reported rather than dropped', () => {
 
 test('an amount above uint64 max is rejected', () => {
   const t = detect({ p: 'bsv-20', op: 'transfer', id: TOKEN_ID, amt: '18446744073709551616' })
-  assert.equal(t.valid, false)
+  assert.equal(t.wellFormed, false)
   assert.match(t.errors.join(' '), /maximum/)
 })
 
 test('a text/plain token is detected but flagged', () => {
   const t = detect({ p: 'bsv-20', op: 'mint', tick: 'ORDI', amt: '1' }, 'text/plain;charset=utf-8')
-  assert.equal(t.valid, true)
+  assert.equal(t.wellFormed, true)
   assert.match(t.warnings.join(' '), /application\/bsv-20/)
 })
 
@@ -101,8 +101,15 @@ test('a transfer reports unknown precision instead of assuming zero', () => {
   assert.equal(resolved.resolvedFromDeploy, true)
 })
 
+test('the scope of the check is stated on the result', () => {
+  const t = detect({ p: 'bsv-20', op: 'transfer', id: TOKEN_ID, amt: '1' })
+  assert.equal(t.validated, 'document')
+  assert.deepEqual(t.notValidated, ['conservation', 'supply', 'ticker-priority'])
+  assert.equal(t.valid, undefined) // deliberately not called `valid`
+})
+
 test('unrecognised JSON fields are preserved but ignored', () => {
   const t = detect({ p: 'bsv-20', op: 'deploy+mint', amt: '1', contract: 'pow-20', difficulty: '3' })
-  assert.equal(t.valid, true)
+  assert.equal(t.wellFormed, true)
   assert.equal(t.json.contract, 'pow-20')
 })

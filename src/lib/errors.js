@@ -14,6 +14,10 @@ export class ApiError extends Error {
     return new ApiError(404, 'not_found', message, details)
   }
 
+  static tooLarge (message, details) {
+    return new ApiError(413, 'too_large', message, details)
+  }
+
   static upstream (message, details) {
     return new ApiError(502, 'upstream_error', message, details)
   }

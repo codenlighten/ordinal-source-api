@@ -159,6 +159,11 @@ export async function traceOrdinal (outpoint, { network = config.network } = {})
         current,
         map: base.map,
         indexer: indexer.name,
+        // Everything above is the indexer's word. Unlike the inscription -
+        // which is parsed from transaction bytes whose hash was checked - the
+        // chain position is not verified against the chain by this API.
+        verified: false,
+        assertedBy: indexer.name,
         attempts
       }
     } catch (err) {
@@ -166,5 +171,12 @@ export async function traceOrdinal (outpoint, { network = config.network } = {})
     }
   }
 
-  return { role: 'unknown', genesis: null, current: null, unavailable: true, attempts }
+  return {
+    role: 'unknown',
+    genesis: null,
+    current: null,
+    verified: false,
+    unavailable: true,
+    attempts
+  }
 }

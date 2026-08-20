@@ -132,7 +132,16 @@ async function resolveOutput (txid, vout, q) {
     return { ...built, source: fetched.source, cached: fetched.cached }
   }
 
-  const fetched = await fetchTransaction(txid, { network: q.network, providers: q.providers })
+  let fetched
+  try {
+    fetched = await fetchTransaction(txid, { network: q.network, providers: q.providers })
+  } catch (err) {
+    // Only reachable when an operator has set MAX_TX_BYTES. One output is all
+    // this request needs, so fetch just that rather than failing outright.
+    if (err.code !== 'too_large') throw err
+    return resolveOutput(txid, vout, { ...q, fast: true })
+  }
+
   const output = fetched.tx.outputs[vout]
   if (!output) {
     throw ApiError.notFound(
@@ -344,7 +353,8 @@ router.get('/fields', (_req, res) => {
     outputFields: [
       'txid', 'vout', 'outpoint', 'network', 'satoshis', 'isOrdinal', 'hasInscription',
       'valid', 'contentLength', 'contentHash', 'fields', 'inscription', 'script', 'asm',
-      'lock', 'lockHex', 'lockAsm', 'address', 'map', 'opReturn', 'warnings'
+      'lock', 'lockHex', 'lockAsm', 'address', 'map', 'opReturn', 'warnings',
+      'contentTruncated', 'contentUrl'
     ],
     tokenFields: [
       'token', 'isToken', 'standard', 'op', 'tokenId', 'tick', 'symbol',

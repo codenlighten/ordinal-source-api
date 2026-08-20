@@ -1,13 +1,19 @@
 import express from 'express'
 import { config } from './config.js'
 import { ApiError } from './lib/errors.js'
+import { rateLimit } from './lib/rateLimit.js'
 import ordinals from './routes/ordinals.js'
 
 export function createApp () {
   const app = express()
   app.disable('x-powered-by')
   app.set('json spaces', 2)
-  app.use(express.json({ limit: '64mb' }))
+  if (config.trustProxy) app.set('trust proxy', config.trustProxy)
+  app.use(express.json({ limit: config.maxBodyBytes }))
+
+  if (config.rateLimit.enabled) {
+    app.use(rateLimit({ skip: (req) => req.path === '/health' }))
+  }
 
   app.get('/health', (_req, res) => {
     res.json({ ok: true, network: config.network, uptime: process.uptime() })

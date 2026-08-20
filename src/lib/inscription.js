@@ -113,6 +113,8 @@ function renderEnvelope (env, opts, outpoint) {
     content: fields.content ? fields.content.value : null,
     contentEncodingUsed: fields.content ? fields.content.encoding : null,
     contentTruncated: fields.content?.truncated ?? false,
+    // Large media is never inlined into JSON - fetch the bytes from here.
+    contentUrl: `/v1/outpoint/${outpoint}/content`,
     bodyParts: env.bodyParts.length,
     fields,
     warnings: env.warnings,

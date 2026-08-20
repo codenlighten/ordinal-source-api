@@ -90,10 +90,19 @@ Selectable token fields: `token`, `isToken`, `standard`, `op`, `tokenId`,
 `tick`, `symbol`, `amount`, `amountDisplay`, `decimals`, `max`. `?tokens=1` on a
 txid keeps only the outputs carrying one.
 
-Each document is validated against the spec rather than merely detected — required
+Each document is checked against the spec rather than merely detected — required
 fields per op, `amt` prohibited on `auth`/`deploy+auth`, uint64 range, `dec` ≤ 18,
 `id` in `<txid>_<vout>` form, `tick` ≤ 4 characters — and reported as
-`valid` with `errors`. Unrecognised JSON fields are preserved in `token.json` and
+`wellFormed` with `errors`.
+
+**The field is called `wellFormed`, not `valid`, on purpose.** It says the
+document is correctly shaped for the operation it declares. It does *not* say
+the operation is valid on chain: token conservation across a transaction's
+inputs and outputs, circulating supply, and which deploy has claim to a ticker
+are all chain-wide questions, not properties of one output. The response states
+its own scope with `validated: "document"` and
+`notValidated: ["conservation", "supply", "ticker-priority"]`, so a well-formed
+transfer that over-spends its inputs is not mistaken for a settled one. Unrecognised JSON fields are preserved in `token.json` and
 ignored, as BSV-21 requires. Historical BSV-20 inscriptions using `text/plain` are
 still detected, with a warning noting the content type.
 
@@ -129,8 +138,11 @@ about a later transfer that carries no envelope — with the chain position unde
 `originNumber`, `genesisOwner`, `current`, `currentOwner` (or `holder`), `role`,
 `spent`, `spentIn`, `height`, `ordinal`.
 
-The same enrichment attaches to `/v1/outpoint/...` with `?origin=1`, or
-automatically when you select one of those fields. GorillaPool indexes both
+**This block is the indexer's word, and says so.** The inscription beside it is
+parsed from transaction bytes whose hash this API checked; the chain position is
+not verified against the chain, so it carries `verified: false` and `assertedBy`
+naming the source. The same enrichment attaches to `/v1/outpoint/...` with
+`?origin=1`, or automatically when you select one of those fields. GorillaPool indexes both
 directions; WhatsOnChain resolves origin only, so it serves as an origin
 fallback. If no indexer answers, the on-chain parse still returns and the
 `ordinal` block is marked `unavailable` with what was tried.
@@ -172,6 +184,32 @@ the requested txid or the source is skipped:
 can also serve a single output script, which `?fast=1` uses to avoid pulling a
 multi-megabyte inscription; that path carries no satoshi value, so `satoshis`
 and `isOrdinal` come back `null` with a warning saying why.
+
+## Size, memory, and load
+
+Inscriptions are legitimately large — images, audio, video — so **there is no
+download size limit by default**. What is limited is the cost of carrying one:
+
+- Transactions are streamed and parsed **as bytes**, never round-tripped through
+  a hex string, which would double the footprint of every video inscription.
+- Bodies over `maxContent` (256 KB default) are **not inlined into JSON**. The
+  response carries `contentLength`, `contentHash`, and a `contentUrl`; the bytes
+  come from `/content` with their real content-type.
+- Transactions over `CACHE_MAX_TX_BYTES` (2 MB default) are served but **not
+  cached**, so one large file cannot pin its full size in memory for the TTL.
+- Concurrent upstream fetches are capped (`MAX_CONCURRENT_FETCHES`, 6) and
+  identical in-flight requests are **coalesced into one** — a burst for the same
+  popular inscription is a single call upstream, not a burst at the provider.
+- A per-IP token bucket (`RATE_LIMIT_RPM`, 120, burst 30) returns `429` with
+  `retry-after`. This guards the providers as much as this process: WhatsOnChain
+  and Bitails throttle by origin, so one heavy client can otherwise get the whole
+  instance limited. Set `RATE_LIMIT=off` to disable, and `TRUST_PROXY` when
+  running behind a proxy so real client IPs are seen.
+
+`MAX_TX_BYTES` is available for a public instance that wants a ceiling — `0`
+means unlimited. When it is set, an oversized download is aborted mid-stream
+rather than buffered, and a single-outpoint request quietly falls back to
+fetching just that output script instead of failing.
 
 ## Parsing rules
 
@@ -228,7 +266,9 @@ broadcast.
 
 Copy `.env.example` to `.env`. Everything has a working default:
 `PORT`, `HOST`, `NETWORK`, `RAW_TX_TIMEOUT_MS`, `CACHE_MAX`, `CACHE_TTL_MS`,
-`MAX_INLINE_CONTENT_BYTES`, `MAX_ENVELOPES_PER_OUTPUT`, `BITAILS_API_KEY`.
+`MAX_INLINE_CONTENT_BYTES`, `MAX_ENVELOPES_PER_OUTPUT`, `BITAILS_API_KEY`,
+`MAX_TX_BYTES`, `CACHE_MAX_TX_BYTES`, `MAX_CONCURRENT_FETCHES`, `MAX_BODY_BYTES`,
+`RATE_LIMIT`, `RATE_LIMIT_RPM`, `RATE_LIMIT_BURST`, `TRUST_PROXY`.
 
 ## Errors
 
@@ -237,5 +277,6 @@ Copy `.env.example` to `.env`. Everything has a working default:
 ```
 
 `400` bad txid, outpoint, field, encoding, or network · `404` transaction or
-output not found (with what each provider said) · `502` all providers failed ·
-`504` upstream timeout.
+output not found (with what each provider said) · `413` over a configured
+`MAX_TX_BYTES` · `429` rate limited (with `retry-after`) · `502` all providers
+failed · `504` upstream timeout.
