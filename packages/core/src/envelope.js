@@ -11,6 +11,21 @@ import {
 const ORD = Buffer.from('ord', 'utf8') // 0x6f7264
 export const BODY_KEY = '' // the OP_0 <content> pair
 
+/**
+ * Tags the Ordinals spec names. Everything else is "unrecognized", and the spec
+ * treats unrecognized tags by parity - the "it's okay to be odd" rule:
+ *
+ *   odd   ignored by an indexer that does not know it
+ *   even  "inscriptions with unrecognized even fields must be displayed as
+ *          unbound, that is, without a location"
+ *
+ * So a custom field on an even tag can cost an inscription its location in
+ * conformant tooling, while the same data on an odd tag is simply skipped.
+ * Worth saying out loud, because a parser that does not enforce it - this one
+ * included - gives no hint that anything is wrong.
+ */
+const KNOWN_TAGS = new Set([0, 1, 2, 3, 5, 7, 9, 11])
+
 const findEnvelopeStart = (chunks, from) => {
   for (let i = from; i + 2 < chunks.length; i++) {
     if (
@@ -49,6 +64,17 @@ function parseOne (chunks, start, index) {
   let terminated = false
   let end = chunks.length
 
+  const parityWarning = (key) => {
+    // Single-byte keys are the tag encoding in practice.
+    if (key.length !== 2) return null
+    const tag = parseInt(key, 16)
+    if (KNOWN_TAGS.has(tag) || tag % 2 === 1) return null
+    return (
+      `field ${tag} is an unrecognized even tag; the Ordinals spec says such an ` +
+      'inscription must be treated as unbound, so an odd tag is the safe choice'
+    )
+  }
+
   const record = (key, value) => {
     const seen = occurrences.get(key)
     if (seen) {
@@ -56,6 +82,8 @@ function parseOne (chunks, start, index) {
       warnings.push(`field 0x${key || '00'} repeated ${seen.length} times; last value wins`)
     } else {
       occurrences.set(key, [value])
+      const parity = parityWarning(key)
+      if (parity) warnings.push(parity)
     }
     fields.set(key, value)
   }

@@ -139,3 +139,41 @@ test('a script with no envelope yields none and keeps the whole lock', () => {
   assert.equal(parsed.envelopes.length, 0)
   assert.equal(parsed.lock.toASM(), p2pkh().toASM())
 })
+
+test('an unrecognized even tag is flagged, an odd one is not', () => {
+  // "It's okay to be odd": the spec ignores unknown odd tags, but says an
+  // inscription with an unknown even tag must be treated as unbound.
+  const custom = (tag) =>
+    envelope({
+      fields: [
+        [Opcode.OP_1, Buffer.from('image/jpeg')],
+        [Buffer.from([tag]), Buffer.from('extra media')]
+      ],
+      body: Buffer.from('the body')
+    })
+
+  assert.deepEqual(parseEnvelopes(custom(21)).envelopes[0].warnings, [])
+
+  const even = parseEnvelopes(custom(20)).envelopes[0]
+  assert.match(even.warnings.join(' '), /unrecognized even tag/)
+  // Still parsed and still valid here - the warning is about how other
+  // implementations will treat it, not about this one refusing.
+  assert.equal(even.valid, true)
+  assert.equal(even.fields.get('14').toString(), 'extra media')
+})
+
+test('the tags the spec names raise no parity warning', () => {
+  const script = envelope({
+    fields: [
+      [Opcode.OP_1, Buffer.from('text/plain')],
+      [Opcode.OP_2, Buffer.from([0])],
+      [Opcode.OP_3, Buffer.from('parent')],
+      [Opcode.OP_5, Buffer.from('meta')],
+      [Opcode.OP_7, Buffer.from('proto')],
+      [Opcode.OP_9, Buffer.from('gzip')],
+      [Opcode.OP_11, Buffer.from('delegate')]
+    ],
+    body: Buffer.from('hi')
+  })
+  assert.deepEqual(parseEnvelopes(script).envelopes[0].warnings, [])
+})

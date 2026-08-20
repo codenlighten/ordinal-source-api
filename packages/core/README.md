@@ -27,6 +27,13 @@ insc.opReturn      // trailing OP_RETURN data, MAP tags decoded
 `OP_RETURN` removed, because that is what a caller wants it for: deriving an
 address from a script with an `OP_RETURN` still attached simply fails.
 
+Custom fields are warned about when they sit on an **unrecognized even tag**:
+the Ordinals spec says such an inscription must be treated as unbound, while an
+unknown *odd* tag is simply ignored. Parsers that do not check this - including
+this one, which still returns the field - give no hint that anything is wrong,
+so the warning is the only thing standing between a custom tag and an
+inscription that loses its location in someone else's indexer.
+
 `parseEnvelopes` gives the full picture when you need it: every field/value pair
 (not just content-type), `OP_1`-`OP_16` aliases normalised, repeated fields
 resolved last-wins with the repeats reported, multi-push bodies counted, and
