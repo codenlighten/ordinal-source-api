@@ -38,8 +38,8 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@smartledger/bsv": "^8.3.1",
-    "@smartledger/ordinals": "^0.1.4",
+    "@smartledger/bsv": "^9.0.0",
+    "@smartledger/ordinals": "^0.1.5",
     "dotenv": "^17.2.3",
     "express": "^5.1.0"
   }

@@ -1,6 +1,6 @@
 {
   "name": "@smartledger/ordinals",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "1Sat Ordinals protocol in pure functions: envelope parsing, ordinal theory arithmetic, and BSV-20 / BSV-21 token rules",
   "type": "module",
   "main": "src/index.js",
@@ -43,6 +43,6 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@smartledger/bsv": "^8.3.1"
+    "@smartledger/bsv": "^9.0.0"
   }
 }
